@@ -81,9 +81,9 @@ input,button,textarea,select{font-family:inherit;outline:none}
 .chat-header-icon{font-size:18px}
 .chat-header-name{font-size:15px;font-weight:600;color:#fff}
 .chat-header-desc{font-size:11px;color:var(--text3)}
-.chat-header-actions{display:flex;gap:4px}
-.chat-header-actions button{background:none;border:1px solid var(--border);color:var(--text2);cursor:pointer;padding:6px 10px;border-radius:6px;font-size:13px;display:flex;align-items:center;gap:5px}
-.chat-header-actions button:hover{background:var(--bg4);color:#fff;border-color:var(--border2)}
+.chat-header-actions{display:flex;gap:6px}
+.chat-header-actions button{background:var(--bg4);border:1px solid var(--border2);color:#fff;cursor:pointer;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px}
+.chat-header-actions button:hover{background:#444;border-color:#555}
 .chat-header-actions button.active-call{background:var(--green);color:#fff;border-color:var(--green)}
 
 /* Messages */
@@ -254,7 +254,7 @@ input,button,textarea,select{font-family:inherit;outline:none}
         </div>
       </div>
       <div class="chat-header-actions">
-        <button id="call-btn" onclick="toggleCall()" title="Chamada de vídeo">📹 Chamada</button>
+        <button id="call-btn" onclick="toggleCall()" title="Chamada de vídeo" style="background:#2ecc71;border-color:#27ae60;font-weight:600">📹 Chamada</button>
         <button onclick="toggleRightPanel('members')" title="Membros">👥</button>
         <button onclick="toggleRightPanel('notifications')" title="Notificações">🔔</button>
       </div>
@@ -943,9 +943,13 @@ function updateCallUI() {
   const btn = document.getElementById('call-btn');
   if (inCall) {
     btn.classList.add('active-call');
+    btn.style.background = '#e74c3c';
+    btn.style.borderColor = '#c0392b';
     btn.innerHTML = '📹 Na chamada';
   } else {
     btn.classList.remove('active-call');
+    btn.style.background = '#2ecc71';
+    btn.style.borderColor = '#27ae60';
     btn.innerHTML = '📹 Chamada';
   }
 }
