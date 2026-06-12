@@ -1,0 +1,557 @@
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import pg from 'pg';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import cors from 'cors';
+import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const app = express();
+const server = createServer(app);
+const io = new Server(server, { cors: { origin: '*' } });
+
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'i9connect_secret_2026';
+const EVERI9_URL = process.env.EVERI9_URL || 'https://mcp-sf-provisioning-462dd29c2455.herokuapp.com';
+const OPENROUTER_KEY = process.env.OPENROUTER_KEY || '';
+const BOT_MODEL = process.env.BOT_MODEL || 'deepseek/deepseek-chat-v3-0324:free';
+
+// ═══ POSTGRES ═══
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
+
+async function initDB() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS connect_users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(60) UNIQUE NOT NULL,
+        display_name VARCHAR(120) NOT NULL,
+        password_hash VARCHAR(200) NOT NULL,
+        role VARCHAR(30) DEFAULT 'member',
+        status VARCHAR(20) DEFAULT 'offline',
+        avatar_color VARCHAR(7) DEFAULT '#555555',
+        last_seen TIMESTAMPTZ DEFAULT NOW(),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS connect_channels (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        description TEXT,
+        type VARCHAR(20) DEFAULT 'channel',
+        is_private BOOLEAN DEFAULT FALSE,
+        created_by INTEGER REFERENCES connect_users(id),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS connect_channel_members (
+        channel_id INTEGER REFERENCES connect_channels(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES connect_users(id) ON DELETE CASCADE,
+        joined_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (channel_id, user_id)
+      );
+      CREATE TABLE IF NOT EXISTS connect_messages (
+        id SERIAL PRIMARY KEY,
+        channel_id INTEGER REFERENCES connect_channels(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES connect_users(id),
+        content TEXT NOT NULL,
+        type VARCHAR(20) DEFAULT 'text',
+        reply_to INTEGER REFERENCES connect_messages(id),
+        edited BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS connect_dm_channels (
+        id SERIAL PRIMARY KEY,
+        user1_id INTEGER REFERENCES connect_users(id),
+        user2_id INTEGER REFERENCES connect_users(id),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user1_id, user2_id)
+      );
+      CREATE TABLE IF NOT EXISTS connect_dm_messages (
+        id SERIAL PRIMARY KEY,
+        dm_channel_id INTEGER REFERENCES connect_dm_channels(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES connect_users(id),
+        content TEXT NOT NULL,
+        type VARCHAR(20) DEFAULT 'text',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS connect_notifications (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES connect_users(id),
+        type VARCHAR(40) NOT NULL,
+        title VARCHAR(200),
+        content TEXT,
+        source VARCHAR(40) DEFAULT 'system',
+        read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS connect_calls (
+        id SERIAL PRIMARY KEY,
+        channel_id INTEGER,
+        started_by INTEGER REFERENCES connect_users(id),
+        call_type VARCHAR(20) DEFAULT 'audio',
+        status VARCHAR(20) DEFAULT 'active',
+        started_at TIMESTAMPTZ DEFAULT NOW(),
+        ended_at TIMESTAMPTZ
+      );
+      CREATE TABLE IF NOT EXISTS connect_call_participants (
+        call_id INTEGER REFERENCES connect_calls(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES connect_users(id),
+        joined_at TIMESTAMPTZ DEFAULT NOW(),
+        left_at TIMESTAMPTZ,
+        PRIMARY KEY (call_id, user_id)
+      );
+    `);
+    // Seed default channels
+    const { rows } = await client.query("SELECT COUNT(*) FROM connect_channels");
+    if (parseInt(rows[0].count) === 0) {
+      await client.query(`INSERT INTO connect_channels (name, description, type) VALUES
+        ('geral', 'Canal geral do projeto', 'channel'),
+        ('arquitetura', 'Discussões de arquitetura Salesforce', 'channel'),
+        ('deploys', 'Notificações de deploys e releases', 'channel'),
+        ('bot-ia', 'Canal com assistente IA integrado', 'channel')
+      `);
+    }
+    console.log('[DB] Schema initialized');
+  } finally { client.release(); }
+}
+
+// ═══ MIDDLEWARE ═══
+app.use(cors());
+app.use(express.json({ limit: '5mb' }));
+app.use(express.static(path.join(__dirname, '..', 'client')));
+
+function authMiddleware(req, res, next) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Token required' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch { res.status(401).json({ error: 'Invalid token' }); }
+}
+
+// ═══ AUTH ROUTES ═══
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, display_name, password } = req.body;
+    if (!username || !password || !display_name) return res.status(400).json({ error: 'Missing fields' });
+    const hash = await bcrypt.hash(password, 10);
+    const colors = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#555555'];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const { rows } = await pool.query(
+      'INSERT INTO connect_users (username, display_name, password_hash, avatar_color) VALUES ($1,$2,$3,$4) RETURNING id, username, display_name, role, avatar_color',
+      [username.toLowerCase().trim(), display_name, hash, color]
+    );
+    const user = rows[0];
+    const token = jwt.sign({ id: user.id, username: user.username, display_name: user.display_name, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    // Auto-join all public channels
+    const channels = await pool.query("SELECT id FROM connect_channels WHERE is_private = FALSE");
+    for (const ch of channels.rows) {
+      await pool.query('INSERT INTO connect_channel_members (channel_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [ch.id, user.id]);
+    }
+    res.json({ token, user });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Username already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const { rows } = await pool.query('SELECT * FROM connect_users WHERE username = $1', [username.toLowerCase().trim()]);
+    if (!rows.length) return res.status(401).json({ error: 'Invalid credentials' });
+    const valid = await bcrypt.compare(password, rows[0].password_hash);
+    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    const user = rows[0];
+    const token = jwt.sign({ id: user.id, username: user.username, display_name: user.display_name, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { id: user.id, username: user.username, display_name: user.display_name, role: user.role, avatar_color: user.avatar_color } });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══ CHANNELS ═══
+app.get('/api/channels', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT c.*, (SELECT COUNT(*) FROM connect_channel_members WHERE channel_id = c.id) AS member_count,
+      (SELECT COUNT(*) FROM connect_messages WHERE channel_id = c.id) AS message_count
+      FROM connect_channels c ORDER BY c.id
+    `);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/channels', authMiddleware, async (req, res) => {
+  try {
+    const { name, description, is_private } = req.body;
+    const { rows } = await pool.query(
+      'INSERT INTO connect_channels (name, description, is_private, created_by) VALUES ($1,$2,$3,$4) RETURNING *',
+      [name, description || '', is_private || false, req.user.id]
+    );
+    await pool.query('INSERT INTO connect_channel_members (channel_id, user_id) VALUES ($1,$2)', [rows[0].id, req.user.id]);
+    io.emit('channel:created', rows[0]);
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══ MESSAGES ═══
+app.get('/api/channels/:id/messages', authMiddleware, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const before = req.query.before || null;
+    let query = `SELECT m.*, u.display_name, u.avatar_color FROM connect_messages m
+      JOIN connect_users u ON m.user_id = u.id WHERE m.channel_id = $1`;
+    const params = [req.params.id];
+    if (before) { query += ' AND m.id < $2'; params.push(before); }
+    query += ' ORDER BY m.created_at DESC LIMIT $' + (params.length + 1);
+    params.push(limit);
+    const { rows } = await pool.query(query, params);
+    res.json(rows.reverse());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══ DMs ═══
+app.get('/api/dms', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT d.*, 
+        CASE WHEN d.user1_id = $1 THEN u2.display_name ELSE u1.display_name END AS other_name,
+        CASE WHEN d.user1_id = $1 THEN u2.avatar_color ELSE u1.avatar_color END AS other_color,
+        CASE WHEN d.user1_id = $1 THEN u2.id ELSE u1.id END AS other_id,
+        CASE WHEN d.user1_id = $1 THEN u2.status ELSE u1.status END AS other_status
+      FROM connect_dm_channels d
+      JOIN connect_users u1 ON d.user1_id = u1.id
+      JOIN connect_users u2 ON d.user2_id = u2.id
+      WHERE d.user1_id = $1 OR d.user2_id = $1
+      ORDER BY d.created_at DESC
+    `, [req.user.id]);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/dms', authMiddleware, async (req, res) => {
+  try {
+    const { user_id } = req.body;
+    const ids = [Math.min(req.user.id, user_id), Math.max(req.user.id, user_id)];
+    const existing = await pool.query('SELECT * FROM connect_dm_channels WHERE user1_id = $1 AND user2_id = $2', ids);
+    if (existing.rows.length) return res.json(existing.rows[0]);
+    const { rows } = await pool.query('INSERT INTO connect_dm_channels (user1_id, user2_id) VALUES ($1,$2) RETURNING *', ids);
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/dms/:id/messages', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT m.*, u.display_name, u.avatar_color FROM connect_dm_messages m
+       JOIN connect_users u ON m.user_id = u.id WHERE m.dm_channel_id = $1
+       ORDER BY m.created_at DESC LIMIT 50`, [req.params.id]
+    );
+    res.json(rows.reverse());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══ USERS ═══
+app.get('/api/users', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id, username, display_name, role, status, avatar_color, last_seen FROM connect_users ORDER BY display_name');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══ NOTIFICATIONS ═══
+app.get('/api/notifications', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM connect_notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 30', [req.user.id]);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/notifications/read-all', authMiddleware, async (req, res) => {
+  try {
+    await pool.query('UPDATE connect_notifications SET read = TRUE WHERE user_id = $1', [req.user.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══ EVER I9 WEBHOOK ═══
+app.post('/api/webhook/everi9', async (req, res) => {
+  try {
+    const { event, data } = req.body;
+    // Find deploys channel
+    const ch = await pool.query("SELECT id FROM connect_channels WHERE name = 'deploys' LIMIT 1");
+    const channelId = ch.rows[0]?.id;
+    let content = '';
+    switch (event) {
+      case 'deploy_complete': content = `🚀 Deploy concluído: ${data?.spec || 'N/A'} — ${data?.status || 'success'}`; break;
+      case 'task_moved': content = `📋 Task movida: "${data?.title}" → ${data?.column || '?'}`; break;
+      case 'refinement_created': content = `📝 Novo refinamento criado: ${data?.title || 'Sem título'}`; break;
+      case 'inventory_complete': content = `🔍 Inventory scan finalizado: ${data?.objectCount || '?'} objetos`; break;
+      default: content = `📢 Evento Ever i9: ${event} — ${JSON.stringify(data || {}).substring(0, 200)}`;
+    }
+    if (channelId) {
+      // Insert as system message (user_id null workaround: use first user or create system user)
+      let sysUser = await pool.query("SELECT id FROM connect_users WHERE username = 'everi9-bot' LIMIT 1");
+      if (!sysUser.rows.length) {
+        const hash = await bcrypt.hash('system_internal_2026', 10);
+        sysUser = await pool.query("INSERT INTO connect_users (username, display_name, password_hash, role, avatar_color, status) VALUES ('everi9-bot','Ever i9 Bot',$1,'bot','#2d2d2d','online') RETURNING id", [hash]);
+      }
+      const botId = sysUser.rows[0].id;
+      const msg = await pool.query(
+        'INSERT INTO connect_messages (channel_id, user_id, content, type) VALUES ($1,$2,$3,$4) RETURNING *',
+        [channelId, botId, content, 'system']
+      );
+      io.to(`channel:${channelId}`).emit('message:new', { ...msg.rows[0], display_name: 'Ever i9 Bot', avatar_color: '#2d2d2d' });
+    }
+    // Notify all users
+    const users = await pool.query('SELECT id FROM connect_users WHERE role != $1', ['bot']);
+    for (const u of users.rows) {
+      await pool.query('INSERT INTO connect_notifications (user_id, type, title, content, source) VALUES ($1,$2,$3,$4,$5)',
+        [u.id, event, `Ever i9: ${event}`, content, 'everi9']);
+    }
+    io.emit('notification:new', { type: event, content });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══ BOT IA ═══
+app.post('/api/bot/ask', authMiddleware, async (req, res) => {
+  try {
+    const { question, channel_id } = req.body;
+    if (!OPENROUTER_KEY) return res.json({ answer: 'Bot IA não configurado. Defina OPENROUTER_KEY no Heroku.' });
+    const fetch = (await import('node-fetch')).default;
+    const sysPrompt = `Você é o assistente IA do i9 Connect, integrado à plataforma Ever i9 de aceleração Salesforce.
+Responda de forma direta e técnica em português do Brasil.
+Você tem conhecimento sobre Salesforce (Sales Cloud, Service Cloud, Data Cloud, Revenue Cloud, Agentforce, MuleSoft).
+Seja conciso, útil e profissional. Use markdown quando útil.`;
+    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENROUTER_KEY}` },
+      body: JSON.stringify({ model: BOT_MODEL, max_tokens: 1000, messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: question }] })
+    });
+    const data = await resp.json();
+    const answer = data.choices?.[0]?.message?.content || 'Sem resposta do modelo.';
+    // Save bot response as message in channel
+    if (channel_id) {
+      let sysUser = await pool.query("SELECT id FROM connect_users WHERE username = 'everi9-bot' LIMIT 1");
+      if (sysUser.rows.length) {
+        const botId = sysUser.rows[0].id;
+        const msg = await pool.query('INSERT INTO connect_messages (channel_id, user_id, content, type) VALUES ($1,$2,$3,$4) RETURNING *',
+          [channel_id, botId, answer, 'bot']);
+        io.to(`channel:${channel_id}`).emit('message:new', { ...msg.rows[0], display_name: 'Ever i9 Bot', avatar_color: '#2d2d2d' });
+      }
+    }
+    res.json({ answer });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══ CALLS ═══
+app.get('/api/calls/active', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT c.*, array_agg(json_build_object('user_id', cp.user_id, 'display_name', u.display_name)) AS participants
+      FROM connect_calls c
+      LEFT JOIN connect_call_participants cp ON c.id = cp.call_id AND cp.left_at IS NULL
+      LEFT JOIN connect_users u ON cp.user_id = u.id
+      WHERE c.status = 'active'
+      GROUP BY c.id
+    `);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══ HEALTH ═══
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', app: 'i9-connect', version: '1.0.0', everi9: EVERI9_URL });
+});
+
+// SPA fallback
+app.get(/^\/(?!api\/).*/, (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'client', 'index.html'), err => {
+    if (err) res.status(404).json({ error: 'Frontend not found' });
+  });
+});
+
+// ═══ SOCKET.IO ═══
+const onlineUsers = new Map(); // socketId -> { userId, username, display_name }
+const activeCalls = new Map(); // callId -> { channelId, participants: Set<socketId> }
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) return next(new Error('Auth required'));
+  try {
+    socket.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch { next(new Error('Invalid token')); }
+});
+
+io.on('connection', async (socket) => {
+  const user = socket.user;
+  onlineUsers.set(socket.id, { userId: user.id, username: user.username, display_name: user.display_name });
+
+  // Update status
+  await pool.query("UPDATE connect_users SET status = 'online', last_seen = NOW() WHERE id = $1", [user.id]);
+  io.emit('presence:update', { userId: user.id, status: 'online', display_name: user.display_name });
+
+  console.log(`[WS] ${user.display_name} connected (${socket.id})`);
+
+  // ── Join channel rooms ──
+  socket.on('channel:join', (channelId) => {
+    socket.join(`channel:${channelId}`);
+  });
+
+  socket.on('channel:leave', (channelId) => {
+    socket.leave(`channel:${channelId}`);
+  });
+
+  // ── Messaging ──
+  socket.on('message:send', async (data) => {
+    try {
+      const { channel_id, content, type = 'text' } = data;
+      const { rows } = await pool.query(
+        'INSERT INTO connect_messages (channel_id, user_id, content, type) VALUES ($1,$2,$3,$4) RETURNING *',
+        [channel_id, user.id, content, type]
+      );
+      const msg = { ...rows[0], display_name: user.display_name, avatar_color: '' };
+      const u = await pool.query('SELECT avatar_color FROM connect_users WHERE id=$1', [user.id]);
+      msg.avatar_color = u.rows[0]?.avatar_color || '#555';
+      io.to(`channel:${channel_id}`).emit('message:new', msg);
+    } catch (err) { socket.emit('error', { message: err.message }); }
+  });
+
+  // ── DM messaging ──
+  socket.on('dm:send', async (data) => {
+    try {
+      const { dm_channel_id, content } = data;
+      const { rows } = await pool.query(
+        'INSERT INTO connect_dm_messages (dm_channel_id, user_id, content) VALUES ($1,$2,$3) RETURNING *',
+        [dm_channel_id, user.id, content]
+      );
+      const u = await pool.query('SELECT avatar_color FROM connect_users WHERE id=$1', [user.id]);
+      const msg = { ...rows[0], display_name: user.display_name, avatar_color: u.rows[0]?.avatar_color || '#555' };
+      // Notify both users in DM
+      const dm = await pool.query('SELECT * FROM connect_dm_channels WHERE id = $1', [dm_channel_id]);
+      if (dm.rows.length) {
+        const otherUserId = dm.rows[0].user1_id === user.id ? dm.rows[0].user2_id : dm.rows[0].user1_id;
+        // Find other user's socket
+        for (const [sid, u] of onlineUsers.entries()) {
+          if (u.userId === otherUserId || u.userId === user.id) {
+            io.to(sid).emit('dm:new', msg);
+          }
+        }
+      }
+    } catch (err) { socket.emit('error', { message: err.message }); }
+  });
+
+  // ── Typing indicators ──
+  socket.on('typing:start', (data) => {
+    socket.to(`channel:${data.channel_id}`).emit('typing:update', { userId: user.id, display_name: user.display_name, typing: true });
+  });
+  socket.on('typing:stop', (data) => {
+    socket.to(`channel:${data.channel_id}`).emit('typing:update', { userId: user.id, display_name: user.display_name, typing: false });
+  });
+
+  // ── WebRTC Signaling ──
+  socket.on('call:start', async (data) => {
+    try {
+      const { channel_id } = data;
+      const { rows } = await pool.query(
+        'INSERT INTO connect_calls (channel_id, started_by) VALUES ($1,$2) RETURNING *',
+        [channel_id, user.id]
+      );
+      const callId = rows[0].id;
+      await pool.query('INSERT INTO connect_call_participants (call_id, user_id) VALUES ($1,$2)', [callId, user.id]);
+      activeCalls.set(callId, { channelId: channel_id, participants: new Set([socket.id]) });
+      socket.callId = callId;
+      io.to(`channel:${channel_id}`).emit('call:started', { callId, channelId: channel_id, startedBy: user.display_name });
+      socket.emit('call:joined', { callId });
+    } catch (err) { socket.emit('error', { message: err.message }); }
+  });
+
+  socket.on('call:join', async (data) => {
+    try {
+      const { call_id } = data;
+      const call = activeCalls.get(call_id);
+      if (!call) return socket.emit('error', { message: 'Call not found' });
+      await pool.query('INSERT INTO connect_call_participants (call_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [call_id, user.id]);
+      // Notify existing participants to create peer connections
+      for (const sid of call.participants) {
+        io.to(sid).emit('call:peer-joined', { socketId: socket.id, userId: user.id, display_name: user.display_name });
+      }
+      call.participants.add(socket.id);
+      socket.callId = call_id;
+      socket.emit('call:joined', { callId: call_id, peers: [...call.participants].filter(s => s !== socket.id) });
+    } catch (err) { socket.emit('error', { message: err.message }); }
+  });
+
+  socket.on('call:signal', (data) => {
+    // Forward WebRTC signaling (offer, answer, ice-candidate)
+    const { to, signal } = data;
+    io.to(to).emit('call:signal', { from: socket.id, signal, userId: user.id, display_name: user.display_name });
+  });
+
+  socket.on('call:leave', async () => {
+    if (socket.callId) {
+      const call = activeCalls.get(socket.callId);
+      if (call) {
+        call.participants.delete(socket.id);
+        for (const sid of call.participants) {
+          io.to(sid).emit('call:peer-left', { socketId: socket.id, userId: user.id, display_name: user.display_name });
+        }
+        if (call.participants.size === 0) {
+          activeCalls.delete(socket.callId);
+          await pool.query("UPDATE connect_calls SET status = 'ended', ended_at = NOW() WHERE id = $1", [socket.callId]);
+          io.to(`channel:${call.channelId}`).emit('call:ended', { callId: socket.callId });
+        }
+      }
+      await pool.query("UPDATE connect_call_participants SET left_at = NOW() WHERE call_id = $1 AND user_id = $2", [socket.callId, user.id]);
+      socket.callId = null;
+    }
+  });
+
+  // ── Status ──
+  socket.on('status:set', async (data) => {
+    const { status } = data;
+    await pool.query('UPDATE connect_users SET status = $1 WHERE id = $2', [status, user.id]);
+    io.emit('presence:update', { userId: user.id, status, display_name: user.display_name });
+  });
+
+  // ── Disconnect ──
+  socket.on('disconnect', async () => {
+    onlineUsers.delete(socket.id);
+    await pool.query("UPDATE connect_users SET status = 'offline', last_seen = NOW() WHERE id = $1", [user.id]);
+    io.emit('presence:update', { userId: user.id, status: 'offline' });
+    // Leave any active call
+    if (socket.callId) {
+      const call = activeCalls.get(socket.callId);
+      if (call) {
+        call.participants.delete(socket.id);
+        for (const sid of call.participants) {
+          io.to(sid).emit('call:peer-left', { socketId: socket.id, userId: user.id });
+        }
+        if (call.participants.size === 0) {
+          activeCalls.delete(socket.callId);
+          await pool.query("UPDATE connect_calls SET status = 'ended', ended_at = NOW() WHERE id = $1", [socket.callId]);
+        }
+      }
+    }
+    console.log(`[WS] ${user.display_name} disconnected`);
+  });
+});
+
+// ═══ START ═══
+initDB().then(() => {
+  server.listen(PORT, () => {
+    console.log(`[i9-connect] Running on port ${PORT}`);
+    console.log(`[i9-connect] Ever i9 integration: ${EVERI9_URL}`);
+  });
+}).catch(err => {
+  console.error('[DB] Init failed:', err);
+  process.exit(1);
+});
