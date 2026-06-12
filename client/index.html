@@ -133,6 +133,38 @@ input,button,textarea,select{font-family:inherit;outline:none}
 .call-btn.hang{background:var(--red);color:#fff}
 .call-btn:hover{opacity:0.85}
 
+/* ═══ VIDEO CALL OVERLAY ═══ */
+.call-overlay{position:fixed;inset:0;background:#0a0a0a;z-index:50;display:none;flex-direction:column}
+.call-overlay.active{display:flex}
+.call-top-bar{padding:12px 20px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.6);z-index:2}
+.call-top-bar .call-title{font-size:14px;font-weight:600;color:#fff}
+.call-top-bar .call-duration{font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums}
+.video-grid{flex:1;display:grid;gap:8px;padding:8px;align-items:center;justify-items:center;overflow:hidden}
+.video-grid.grid-1{grid-template-columns:1fr}
+.video-grid.grid-2{grid-template-columns:1fr 1fr}
+.video-grid.grid-3,.video-grid.grid-4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+.video-grid.grid-5,.video-grid.grid-6{grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr}
+.video-cell{position:relative;width:100%;height:100%;background:#1a1a1a;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.video-cell video{width:100%;height:100%;object-fit:cover;border-radius:10px}
+.video-cell .video-label{position:absolute;bottom:8px;left:10px;background:rgba(0,0,0,0.65);color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;z-index:1}
+.video-cell .video-muted-icon{position:absolute;top:8px;right:10px;background:rgba(229,57,53,0.8);color:#fff;font-size:10px;padding:3px 6px;border-radius:8px}
+.video-cell.camera-off{background:#2d2d2d}
+.video-cell.camera-off .avatar-placeholder{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#fff}
+.local-video-wrap{position:absolute;bottom:80px;right:16px;width:180px;height:135px;border-radius:10px;overflow:hidden;border:2px solid var(--border);z-index:3;background:#1a1a1a;cursor:move}
+.local-video-wrap video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.local-video-wrap .video-label{position:absolute;bottom:4px;left:6px;background:rgba(0,0,0,0.6);color:#fff;font-size:9px;padding:2px 6px;border-radius:8px}
+.local-video-wrap.camera-off{display:flex;align-items:center;justify-content:center}
+.local-video-wrap.camera-off video{display:none}
+.local-video-wrap.camera-off .avatar-placeholder{font-size:20px;font-weight:700;color:#fff}
+.call-bottom-bar{padding:14px 20px;display:flex;align-items:center;justify-content:center;gap:12px;background:rgba(0,0,0,0.6);z-index:2}
+.ctl-btn{width:48px;height:48px;border-radius:50%;border:none;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:background 0.2s}
+.ctl-btn.mic{background:var(--bg4);color:#fff}
+.ctl-btn.mic.off{background:var(--red);color:#fff}
+.ctl-btn.cam{background:var(--bg4);color:#fff}
+.ctl-btn.cam.off{background:var(--red);color:#fff}
+.ctl-btn.hangup{background:var(--red);color:#fff;width:56px;height:56px;font-size:20px}
+.ctl-btn:hover{opacity:0.85}
+
 /* Notification items */
 .notif-item{padding:10px 12px;border-radius:6px;background:var(--bg);margin-bottom:6px;border-left:3px solid var(--accent)}
 .notif-item.unread{border-left-color:var(--yellow)}
@@ -222,7 +254,7 @@ input,button,textarea,select{font-family:inherit;outline:none}
         </div>
       </div>
       <div class="chat-header-actions">
-        <button id="call-btn" onclick="toggleCall()" title="Chamada de áudio">🎙 Áudio</button>
+        <button id="call-btn" onclick="toggleCall()" title="Chamada de vídeo">📹 Chamada</button>
         <button onclick="toggleRightPanel('members')" title="Membros">👥</button>
         <button onclick="toggleRightPanel('notifications')" title="Notificações">🔔</button>
       </div>
@@ -277,6 +309,25 @@ input,button,textarea,select{font-family:inherit;outline:none}
   </div>
 </div>
 
+<!-- Video Call Overlay -->
+<div class="call-overlay" id="call-overlay">
+  <div class="call-top-bar">
+    <div class="call-title" id="call-channel-name">Chamada</div>
+    <div class="call-duration" id="call-duration">00:00</div>
+  </div>
+  <div class="video-grid grid-1" id="video-grid"></div>
+  <div class="local-video-wrap" id="local-video-wrap">
+    <video id="local-video" autoplay muted playsinline></video>
+    <div class="video-label">Você</div>
+    <div class="avatar-placeholder" id="local-avatar-ph" style="display:none"></div>
+  </div>
+  <div class="call-bottom-bar">
+    <button class="ctl-btn mic" id="btn-mic" onclick="toggleMute()" title="Microfone">🎙</button>
+    <button class="ctl-btn cam" id="btn-cam" onclick="toggleCamera()" title="Câmera">📷</button>
+    <button class="ctl-btn hangup" onclick="leaveCall()" title="Encerrar">📞</button>
+  </div>
+</div>
+
 <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
 <script>
 // ═══ STATE ═══
@@ -295,6 +346,9 @@ let localStream = null;
 let peerConnections = {};
 let inCall = false;
 let isMuted = false;
+let isVideoOff = false;
+let callTimerInterval = null;
+let callStartTime = null;
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' }
@@ -404,7 +458,7 @@ function connectSocket() {
   // WebRTC events
   socket.on('call:started', (data) => {
     if (activeView?.type === 'channel' && data.channelId === activeView.id) {
-      appendSystemMessage(`🎙 ${data.startedBy} iniciou uma chamada de áudio`);
+      appendSystemMessage(`📹 ${data.startedBy} iniciou uma chamada de vídeo`);
     }
   });
 
@@ -420,8 +474,7 @@ function connectSocket() {
   });
 
   socket.on('call:peer-joined', async (data) => {
-    appendSystemMessage(`🎙 ${data.display_name} entrou na chamada`);
-    // Wait for incoming offer from the new peer
+    appendSystemMessage(`📹 ${data.display_name} entrou na chamada`);
   });
 
   socket.on('call:signal', async (data) => {
@@ -432,6 +485,11 @@ function connectSocket() {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       socket.emit('call:signal', { to: from, signal: answer });
+      // Set peer label
+      setTimeout(() => {
+        const cell = document.getElementById('cell-' + from);
+        if (cell && data.display_name) cell.querySelector('.video-label').textContent = data.display_name;
+      }, 200);
     } else if (signal.type === 'answer') {
       const pc = peerConnections[from];
       if (pc) await pc.setRemoteDescription(new RTCSessionDescription(signal));
@@ -445,15 +503,16 @@ function connectSocket() {
     if (peerConnections[data.socketId]) {
       peerConnections[data.socketId].close();
       delete peerConnections[data.socketId];
-      const el = document.getElementById('audio-' + data.socketId);
-      if (el) el.remove();
+      const cell = document.getElementById('cell-' + data.socketId);
+      if (cell) cell.remove();
+      updateVideoGrid();
     }
-    appendSystemMessage(`🎙 ${data.display_name || 'Usuário'} saiu da chamada`);
+    appendSystemMessage(`📹 ${data.display_name || 'Usuário'} saiu da chamada`);
   });
 
   socket.on('call:ended', () => {
     endCall();
-    appendSystemMessage('🎙 Chamada encerrada');
+    appendSystemMessage('📹 Chamada encerrada');
   });
 }
 
@@ -744,17 +803,27 @@ async function updateNotifBadge() {
   } catch {}
 }
 
-// ═══ WEBRTC AUDIO CALLS ═══
+// ═══ WEBRTC VIDEO CALLS ═══
 async function toggleCall() {
   if (inCall) {
-    socket.emit('call:leave');
-    endCall();
+    leaveCall();
     return;
   }
   if (!activeView || activeView.type !== 'channel') return;
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    // Check for active call in this channel
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    // Show local preview
+    const localVideo = document.getElementById('local-video');
+    localVideo.srcObject = localStream;
+    document.getElementById('local-avatar-ph').textContent = initials(currentUser.display_name);
+    document.getElementById('local-avatar-ph').style.background = currentUser.avatar_color || '#555';
+    // Show overlay
+    document.getElementById('call-overlay').classList.add('active');
+    document.getElementById('call-channel-name').textContent = '#' + activeView.name;
+    // Start timer
+    callStartTime = Date.now();
+    callTimerInterval = setInterval(updateCallDuration, 1000);
+    // Check for active call or start new
     const activeCalls = await apiFetch('/api/calls/active');
     const existingCall = activeCalls.find(c => c.channel_id === activeView.id);
     if (existingCall) {
@@ -763,8 +832,14 @@ async function toggleCall() {
       socket.emit('call:start', { channel_id: activeView.id });
     }
   } catch (err) {
-    appendSystemMessage('⚠ Permissão de microfone negada ou indisponível');
+    console.error('Media error:', err);
+    appendSystemMessage('⚠ Permissão de câmera/microfone negada. Verifique as permissões do browser.');
   }
+}
+
+function leaveCall() {
+  socket.emit('call:leave');
+  endCall();
 }
 
 function createPeerConnection(peerId, initiator) {
@@ -782,14 +857,16 @@ function createPeerConnection(peerId, initiator) {
   };
 
   pc.ontrack = (e) => {
-    let audio = document.getElementById('audio-' + peerId);
-    if (!audio) {
-      audio = document.createElement('audio');
-      audio.id = 'audio-' + peerId;
-      audio.autoplay = true;
-      document.body.appendChild(audio);
+    let cell = document.getElementById('cell-' + peerId);
+    if (!cell) {
+      cell = document.createElement('div');
+      cell.id = 'cell-' + peerId;
+      cell.className = 'video-cell';
+      cell.innerHTML = '<video autoplay playsinline></video><div class="video-label">Participante</div>';
+      document.getElementById('video-grid').appendChild(cell);
+      updateVideoGrid();
     }
-    audio.srcObject = e.streams[0];
+    cell.querySelector('video').srcObject = e.streams[0];
   };
 
   if (initiator) {
@@ -805,10 +882,20 @@ function createPeerConnection(peerId, initiator) {
 function endCall() {
   inCall = false;
   isMuted = false;
+  isVideoOff = false;
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   Object.values(peerConnections).forEach(pc => pc.close());
   peerConnections = {};
-  document.querySelectorAll('audio[id^="audio-"]').forEach(el => el.remove());
+  // Clean overlay
+  document.getElementById('video-grid').innerHTML = '';
+  document.getElementById('call-overlay').classList.remove('active');
+  document.getElementById('local-video').srcObject = null;
+  // Reset buttons
+  document.getElementById('btn-mic').classList.remove('off');
+  document.getElementById('btn-cam').classList.remove('off');
+  document.getElementById('local-video-wrap').classList.remove('camera-off');
+  // Timer
+  if (callTimerInterval) { clearInterval(callTimerInterval); callTimerInterval = null; }
   updateCallUI();
 }
 
@@ -816,17 +903,50 @@ function toggleMute() {
   if (!localStream) return;
   isMuted = !isMuted;
   localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
-  updateCallUI();
+  const btn = document.getElementById('btn-mic');
+  btn.classList.toggle('off', isMuted);
+  btn.textContent = isMuted ? '🔇' : '🎙';
+}
+
+function toggleCamera() {
+  if (!localStream) return;
+  isVideoOff = !isVideoOff;
+  localStream.getVideoTracks().forEach(t => t.enabled = !isVideoOff);
+  const btn = document.getElementById('btn-cam');
+  btn.classList.toggle('off', isVideoOff);
+  btn.textContent = isVideoOff ? '🚫' : '📷';
+  const wrap = document.getElementById('local-video-wrap');
+  if (isVideoOff) {
+    wrap.classList.add('camera-off');
+    document.getElementById('local-avatar-ph').style.display = 'flex';
+  } else {
+    wrap.classList.remove('camera-off');
+    document.getElementById('local-avatar-ph').style.display = 'none';
+  }
+}
+
+function updateVideoGrid() {
+  const grid = document.getElementById('video-grid');
+  const count = grid.children.length;
+  grid.className = 'video-grid grid-' + Math.min(count || 1, 6);
+}
+
+function updateCallDuration() {
+  if (!callStartTime) return;
+  const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+  const min = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const sec = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('call-duration').textContent = min + ':' + sec;
 }
 
 function updateCallUI() {
   const btn = document.getElementById('call-btn');
   if (inCall) {
     btn.classList.add('active-call');
-    btn.innerHTML = '🎙 Na chamada';
+    btn.innerHTML = '📹 Na chamada';
   } else {
     btn.classList.remove('active-call');
-    btn.innerHTML = '🎙 Áudio';
+    btn.innerHTML = '📹 Chamada';
   }
 }
 
