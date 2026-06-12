@@ -216,6 +216,54 @@ app.get('/api/channels/:id/messages', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ═══ CLEAR CHAT → MOVE TO HISTORY ═══
+app.post('/api/channels/:id/clear', authMiddleware, async (req, res) => {
+  try {
+    const channelId = parseInt(req.params.id);
+    // Get source channel name
+    const srcCh = await pool.query('SELECT name FROM connect_channels WHERE id = $1', [channelId]);
+    if (!srcCh.rows.length) return res.status(404).json({ error: 'Channel not found' });
+    const srcName = srcCh.rows[0].name;
+    // Get or create chat-history channel
+    let history = await pool.query("SELECT id FROM connect_channels WHERE name = 'chat-history' LIMIT 1");
+    if (!history.rows.length) {
+      history = await pool.query(
+        "INSERT INTO connect_channels (name, description, type) VALUES ('chat-history', 'Histórico de mensagens arquivadas', 'channel') RETURNING id"
+      );
+    }
+    const historyId = history.rows[0].id;
+    // Get all messages from source channel
+    const msgs = await pool.query(
+      `SELECT m.*, u.display_name FROM connect_messages m
+       JOIN connect_users u ON m.user_id = u.id
+       WHERE m.channel_id = $1 ORDER BY m.created_at ASC`, [channelId]
+    );
+    if (msgs.rows.length === 0) return res.json({ ok: true, moved: 0 });
+    // Copy messages to history with channel context
+    const timestamp = new Date().toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    // Insert header
+    let sysUser = await pool.query("SELECT id FROM connect_users WHERE username = 'everi9-bot' LIMIT 1");
+    const botId = sysUser.rows.length ? sysUser.rows[0].id : req.user.id;
+    await pool.query(
+      'INSERT INTO connect_messages (channel_id, user_id, content, type) VALUES ($1,$2,$3,$4)',
+      [historyId, botId, `━━━ Histórico #${srcName} — arquivado em ${timestamp} ━━━`, 'system']
+    );
+    // Copy each message
+    for (const m of msgs.rows) {
+      const dt = new Date(m.created_at).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+      await pool.query(
+        'INSERT INTO connect_messages (channel_id, user_id, content, type, created_at) VALUES ($1,$2,$3,$4,$5)',
+        [historyId, m.user_id, m.content, m.type, m.created_at]
+      );
+    }
+    // Delete from source
+    await pool.query('DELETE FROM connect_messages WHERE channel_id = $1', [channelId]);
+    // Notify channel
+    io.to(`channel:${channelId}`).emit('chat:cleared', { channelId });
+    res.json({ ok: true, moved: msgs.rows.length, historyChannelId: historyId });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ═══ DMs ═══
 app.get('/api/dms', authMiddleware, async (req, res) => {
   try {
