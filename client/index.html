@@ -92,6 +92,18 @@ input,button,textarea,select{font-family:inherit;outline:none}
 .message:hover{background:rgba(255,255,255,0.02)}
 .msg-avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;margin-top:2px}
 .msg-avatar.bot-avatar{background:linear-gradient(135deg,#4a9eff,#2ecc71);font-size:18px;box-shadow:0 0 0 2px #1a1a1a,0 0 0 4px rgba(74,158,255,0.3)}
+
+/* Suggestion card (collapsible) */
+.msg-suggestion{background:var(--bg3);border:1px solid var(--border);border-left:3px solid #4a9eff;border-radius:0 8px 8px 0;margin-top:6px;cursor:pointer;overflow:hidden;transition:all 0.2s}
+.msg-suggestion:hover{border-left-color:#2ecc71;background:var(--bg4)}
+.suggestion-header{padding:8px 14px;display:flex;align-items:center;gap:8px}
+.suggestion-icon{font-size:16px}
+.suggestion-label{font-size:11px;font-weight:600;color:#4a9eff;flex:1}
+.suggestion-toggle{font-size:10px;color:var(--text3);transition:transform 0.2s}
+.msg-suggestion.expanded .suggestion-toggle{transform:rotate(90deg)}
+.suggestion-body{max-height:0;overflow:hidden;transition:max-height 0.3s ease;padding:0 14px}
+.msg-suggestion.expanded .suggestion-body{max-height:600px;padding:0 14px 12px}
+.suggestion-body-text{font-size:12px;color:var(--text);line-height:1.6;white-space:pre-wrap}
 .msg-body{flex:1;min-width:0}
 .msg-header{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
 .msg-author{font-size:13px;font-weight:600;color:#fff}
@@ -292,7 +304,7 @@ input,button,textarea,select{font-family:inherit;outline:none}
           onkeydown="handleInputKey(event)" oninput="handleTyping()"></textarea>
         <button class="chat-send-btn" onclick="sendMessage()" id="send-btn" disabled>➤</button>
       </div>
-      <div class="bot-hint" id="bot-hint" style="display:none">🤖 Este canal tem IA integrada — basta digitar sua pergunta e o <strong>i9 Bot</strong> responde automaticamente.</div>
+      <div class="bot-hint" id="bot-hint" style="display:block">🤖 O i9 Bot detecta automaticamente tópicos Salesforce e sugere respostas. Use <strong>@bot</strong> para perguntas diretas.</div>
     </div>
   </div>
 
@@ -580,8 +592,7 @@ async function openChannel(ch) {
   document.getElementById('chat-icon').textContent = '#';
   document.getElementById('chat-name').textContent = ch.name;
   document.getElementById('chat-desc').textContent = ch.description || '';
-  document.getElementById('bot-hint').style.display = ch.name === 'bot-ia' ? 'block' : 'none';
-  document.getElementById('msg-input').placeholder = ch.name === 'bot-ia' ? 'Pergunte qualquer coisa ao i9 Bot...' : 'Digite uma mensagem...';
+  document.getElementById('msg-input').placeholder = 'Digite uma mensagem...';
   renderChannels();
   renderDMs();
   socket.emit('channel:join', ch.id);
@@ -614,8 +625,26 @@ function renderMessages(msgs) {
 
 function messageHTML(m) {
   const isBot = m.type === 'bot' || m.type === 'system';
-  const contentClass = m.type === 'bot' ? 'msg-content bot' : m.type === 'system' ? 'msg-content system' : 'msg-content';
+  const isSuggestion = m.type === 'suggestion';
   const time = new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  // Suggestion card (collapsible)
+  if (isSuggestion) {
+    return `<div class="message" style="padding-left:52px">
+      <div class="msg-suggestion" onclick="this.classList.toggle('expanded')">
+        <div class="suggestion-header">
+          <span class="suggestion-icon">🤖</span>
+          <span class="suggestion-label">i9 Bot detectou um tópico Salesforce</span>
+          <span class="suggestion-toggle">▶</span>
+        </div>
+        <div class="suggestion-body">
+          <div class="suggestion-body-text">${escapeHtml(m.content)}</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  const contentClass = m.type === 'bot' ? 'msg-content bot' : m.type === 'system' ? 'msg-content system' : 'msg-content';
   const avatarHTML = isBot
     ? '<div class="msg-avatar bot-avatar">🤖</div>'
     : `<div class="msg-avatar" style="background:${m.avatar_color || '#555'}">${initials(m.display_name || '?')}</div>`;
@@ -660,22 +689,18 @@ async function sendMessage() {
   const content = input.value.trim();
   if (!content || !activeView) return;
 
-  // Bot auto-reply: no canal bot-ia, toda mensagem vai pro bot (sem precisar de @bot)
-  const isBotChannel = activeView.type === 'channel' && activeView.name === 'bot-ia';
-  const isBotMention = activeView.type === 'channel' && content.toLowerCase().startsWith('@bot');
-
-  if (isBotChannel || isBotMention) {
-    const question = isBotMention ? content.replace(/^@bot\s*/i, '') : content;
-    // Send user message first
+  // @bot explicit query (any channel)
+  if (activeView.type === 'channel' && content.toLowerCase().startsWith('@bot')) {
+    const question = content.replace(/^@bot\s*/i, '');
     socket.emit('message:send', { channel_id: activeView.id, content });
     input.value = '';
     input.style.height = 'auto';
     updateSendBtn();
-    // Ask bot
     await apiFetch('/api/bot/ask', { method: 'POST', body: JSON.stringify({ question, channel_id: activeView.id }) });
     return;
   }
 
+  // Normal message (backend auto-detects Salesforce context)
   if (activeView.type === 'channel') {
     socket.emit('message:send', { channel_id: activeView.id, content });
   } else if (activeView.type === 'dm') {
