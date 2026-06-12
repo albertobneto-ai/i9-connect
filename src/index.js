@@ -378,6 +378,49 @@ app.get(/^\/(?!api\/).*/, (req, res) => {
   });
 });
 
+// ═══ AUTO-SUGGEST (Salesforce context detection) ═══
+const SF_KEYWORDS = /\b(salesforce|apex|flow|trigger|soql|sosl|lightning|lwc|aura|lead|leads|account|accounts|opportunity|opportunities|contact|contacts|campaign|dashboard|report|permission|profile|record.?type|validation.?rule|workflow|process.?builder|data.?cloud|mulesoft|agentforce|revenue.?cloud|service.?cloud|sales.?cloud|cpq|quote|order|contract|picklist|lookup|master.?detail|sharing|deployment|metadata|sandbox|scratch.?org|devhub|connected.?app|oauth|rest.?api|soap|bulk.?api|platform.?event|experience.?cloud|community|visualforce|screen.?flow|autolaunched|batch|future|queueable|invocable|object|custom.?field|page.?layout|related.?list|roll.?up|formula|field|org|admin|setup|permission.?set|managed.?package|unmanaged|changeset|deploy|cls|sfdx|sf\s+cli|einstein|copilot|omnistudio|vlocity|integration|webservice|callout|http.?request|named.?credential|external.?object)\b/i;
+
+async function autoSuggest(channelId, content) {
+  if (!OPENROUTER_KEY) return;
+  if (!SF_KEYWORDS.test(content)) return;
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENROUTER_KEY}` },
+      body: JSON.stringify({
+        model: BOT_MODEL,
+        max_tokens: 600,
+        messages: [
+          { role: 'system', content: `Você é um assistente especialista Salesforce integrado a um chat corporativo.
+Analise a mensagem do usuário. Se for uma pergunta ou discussão sobre Salesforce, responda de forma técnica, concisa e útil em português do Brasil (máximo 3 parágrafos).
+Se NÃO for uma pergunta/discussão Salesforce (apenas menção casual, saudação, etc), responda exatamente: SKIP` },
+          { role: 'user', content }
+        ]
+      })
+    });
+    const data = await resp.json();
+    const answer = data.choices?.[0]?.message?.content?.trim();
+    if (!answer || answer === 'SKIP' || answer.startsWith('SKIP')) return;
+    // Get bot user
+    let sysUser = await pool.query("SELECT id FROM connect_users WHERE username = 'everi9-bot' LIMIT 1");
+    if (!sysUser.rows.length) {
+      const hash = await bcrypt.hash('system_internal_2026', 10);
+      sysUser = await pool.query("INSERT INTO connect_users (username, display_name, password_hash, role, avatar_color, status) VALUES ('everi9-bot','i9 Bot',$1,'bot','#2d2d2d','online') RETURNING id", [hash]);
+    }
+    const botId = sysUser.rows[0].id;
+    const msg = await pool.query(
+      'INSERT INTO connect_messages (channel_id, user_id, content, type) VALUES ($1,$2,$3,$4) RETURNING *',
+      [channelId, botId, answer, 'suggestion']
+    );
+    io.to(`channel:${channelId}`).emit('message:new', { ...msg.rows[0], display_name: 'i9 Bot', avatar_color: '#2d2d2d' });
+    console.log('[AutoSuggest] Suggestion posted to channel', channelId);
+  } catch (err) {
+    console.error('[AutoSuggest] Error:', err.message);
+  }
+}
+
 // ═══ SOCKET.IO ═══
 const onlineUsers = new Map(); // socketId -> { userId, username, display_name }
 const activeCalls = new Map(); // callId -> { channelId, participants: Set<socketId> }
@@ -422,6 +465,10 @@ io.on('connection', async (socket) => {
       const u = await pool.query('SELECT avatar_color FROM connect_users WHERE id=$1', [user.id]);
       msg.avatar_color = u.rows[0]?.avatar_color || '#555';
       io.to(`channel:${channel_id}`).emit('message:new', msg);
+      // Auto-detect Salesforce context and suggest (fire-and-forget)
+      if (type === 'text' && content.length > 8) {
+        autoSuggest(channel_id, content).catch(e => console.error('[AutoSuggest]', e.message));
+      }
     } catch (err) { socket.emit('error', { message: err.message }); }
   });
 
