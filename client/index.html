@@ -91,6 +91,7 @@ input,button,textarea,select{font-family:inherit;outline:none}
 .message{display:flex;gap:10px;margin-bottom:14px;padding:4px 8px;border-radius:6px}
 .message:hover{background:rgba(255,255,255,0.02)}
 .msg-avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;margin-top:2px}
+.msg-avatar.bot-avatar{background:linear-gradient(135deg,#4a9eff,#2ecc71);font-size:18px;box-shadow:0 0 0 2px #1a1a1a,0 0 0 4px rgba(74,158,255,0.3)}
 .msg-body{flex:1;min-width:0}
 .msg-header{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
 .msg-author{font-size:13px;font-weight:600;color:#fff}
@@ -291,7 +292,7 @@ input,button,textarea,select{font-family:inherit;outline:none}
           onkeydown="handleInputKey(event)" oninput="handleTyping()"></textarea>
         <button class="chat-send-btn" onclick="sendMessage()" id="send-btn" disabled>➤</button>
       </div>
-      <div class="bot-hint" id="bot-hint" style="display:none">💡 Este canal tem bot IA. Comece com <strong>@bot</strong> para perguntar algo.</div>
+      <div class="bot-hint" id="bot-hint" style="display:none">🤖 Este canal tem IA integrada — basta digitar sua pergunta e o <strong>i9 Bot</strong> responde automaticamente.</div>
     </div>
   </div>
 
@@ -580,7 +581,7 @@ async function openChannel(ch) {
   document.getElementById('chat-name').textContent = ch.name;
   document.getElementById('chat-desc').textContent = ch.description || '';
   document.getElementById('bot-hint').style.display = ch.name === 'bot-ia' ? 'block' : 'none';
-  document.getElementById('msg-input').placeholder = ch.name === 'bot-ia' ? '@bot sua pergunta...' : 'Digite uma mensagem...';
+  document.getElementById('msg-input').placeholder = ch.name === 'bot-ia' ? 'Pergunte qualquer coisa ao i9 Bot...' : 'Digite uma mensagem...';
   renderChannels();
   renderDMs();
   socket.emit('channel:join', ch.id);
@@ -615,11 +616,15 @@ function messageHTML(m) {
   const isBot = m.type === 'bot' || m.type === 'system';
   const contentClass = m.type === 'bot' ? 'msg-content bot' : m.type === 'system' ? 'msg-content system' : 'msg-content';
   const time = new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const avatarHTML = isBot
+    ? '<div class="msg-avatar bot-avatar">🤖</div>'
+    : `<div class="msg-avatar" style="background:${m.avatar_color || '#555'}">${initials(m.display_name || '?')}</div>`;
+  const authorName = isBot ? 'i9 Bot' : (m.display_name || 'Sistema');
   return `<div class="message">
-    <div class="msg-avatar" style="background:${m.avatar_color || '#555'}">${initials(m.display_name || '?')}</div>
+    ${avatarHTML}
     <div class="msg-body">
       <div class="msg-header">
-        <span class="msg-author">${m.display_name || 'Sistema'}</span>
+        <span class="msg-author" ${isBot ? 'style="color:#4a9eff"' : ''}>${authorName}</span>
         <span class="msg-time">${time}</span>
       </div>
       <div class="${contentClass}">${escapeHtml(m.content)}</div>
@@ -655,9 +660,12 @@ async function sendMessage() {
   const content = input.value.trim();
   if (!content || !activeView) return;
 
-  // Bot query
-  if (activeView.type === 'channel' && content.toLowerCase().startsWith('@bot')) {
-    const question = content.replace(/^@bot\s*/i, '');
+  // Bot auto-reply: no canal bot-ia, toda mensagem vai pro bot (sem precisar de @bot)
+  const isBotChannel = activeView.type === 'channel' && activeView.name === 'bot-ia';
+  const isBotMention = activeView.type === 'channel' && content.toLowerCase().startsWith('@bot');
+
+  if (isBotChannel || isBotMention) {
+    const question = isBotMention ? content.replace(/^@bot\s*/i, '') : content;
     // Send user message first
     socket.emit('message:send', { channel_id: activeView.id, content });
     input.value = '';
