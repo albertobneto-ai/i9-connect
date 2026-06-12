@@ -352,6 +352,94 @@ Seja conciso, útil e profissional. Use markdown quando útil.`;
 });
 
 // ═══ CALLS ═══
+
+// ═══ ORG SF PROXY ═══
+app.get('/api/orgs-available', authMiddleware, async (req, res) => {
+  try {
+    const fetch = (await import('node-fetch')).default;
+    // Fetch default org info
+    const connResp = await fetch(`${EVERI9_URL}/test-connection`).then(r => r.json()).catch(() => null);
+    const orgs = [
+      { id: 'default', name: 'Dev Org (Algar)', username: connResp?.username || '?', status: connResp?.status === 'connected' ? 'online' : 'offline' },
+      { id: '1', name: 'DevEvery (Read-only)', username: 'Spec/Gap Analysis', status: 'online' }
+    ];
+    res.json(orgs);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/orgsf', authMiddleware, async (req, res) => {
+  try {
+    const { command, org_id, channel_id } = req.body;
+    if (!command) return res.status(400).json({ error: 'Command required' });
+    const fetch = (await import('node-fetch')).default;
+    let result = '';
+    const cmd = command.trim().toLowerCase();
+    const args = command.trim().substring(command.trim().indexOf(' ') + 1).trim();
+
+    // Route commands to Ever i9 endpoints
+    if (cmd.startsWith('descreva ') || cmd.startsWith('describe ')) {
+      const objName = args.replace(/^(descreva|describe)\s*/i, '').trim();
+      const endpoint = org_id === '1'
+        ? `${EVERI9_URL}/api/orgs/1/describe?object=${objName}`
+        : `${EVERI9_URL}/api/describe/${objName}`;
+      const data = await fetch(endpoint).then(r => r.json()).catch(e => ({ error: e.message }));
+      if (data.error) { result = `Erro: ${data.error}`; }
+      else {
+        const fields = data.fields || [];
+        const customs = fields.filter(f => f.custom);
+        const standards = fields.filter(f => !f.custom);
+        result = `**${data.name || objName}** (${data.label || ''})\n\n`;
+        result += `Total de campos: ${fields.length} (${standards.length} padrão + ${customs.length} custom)\n`;
+        result += `Record Types: ${(data.recordTypeInfos || []).filter(r => r.name !== 'Master').map(r => r.name).join(', ') || 'Nenhum'}\n\n`;
+        if (customs.length > 0) {
+          result += `**Campos Custom (${customs.length}):**\n`;
+          customs.forEach(f => { result += `• ${f.label} (${f.name}) — ${f.type}\n`; });
+        }
+        result += `\n**Campos Padrão principais:**\n`;
+        standards.slice(0, 15).forEach(f => { result += `• ${f.label} (${f.name}) — ${f.type}\n`; });
+        if (standards.length > 15) result += `... e mais ${standards.length - 15} campos padrão`;
+      }
+    } else if (cmd.startsWith('soql ') || cmd.startsWith('query ')) {
+      const query = args.replace(/^(soql|query)\s*/i, '').trim();
+      const b64 = Buffer.from(query).toString('base64');
+      const endpoint = org_id === '1'
+        ? `${EVERI9_URL}/api/orgs/1/soql?q=${encodeURIComponent(query)}`
+        : `${EVERI9_URL}/api/soql-b64/${b64}`;
+      const data = await fetch(endpoint).then(r => r.json()).catch(e => ({ error: e.message }));
+      if (data.error) { result = `Erro SOQL: ${data.error}`; }
+      else {
+        const records = data.records || data || [];
+        result = `**Resultado SOQL** (${records.length} registros)\n\n`;
+        records.slice(0, 10).forEach((r, i) => {
+          const fields = Object.entries(r).filter(([k]) => k !== 'attributes').map(([k, v]) => `${k}: ${v}`).join(' | ');
+          result += `${i + 1}. ${fields}\n`;
+        });
+        if (records.length > 10) result += `\n... e mais ${records.length - 10} registros`;
+      }
+    } else if (cmd.startsWith('status') || cmd.startsWith('conexão') || cmd.startsWith('conexao')) {
+      const data = await fetch(`${EVERI9_URL}/test-connection`).then(r => r.json()).catch(e => ({ error: e.message }));
+      result = `**Status da Org**\n• Status: ${data.status}\n• Org ID: ${data.orgId}\n• Username: ${data.username}\n• Instance: ${data.instanceUrl}`;
+    } else {
+      result = `Comando não reconhecido: "${cmd}"\n\nComandos disponíveis:\n• @orgsf descreva Lead\n• @orgsf soql SELECT Id, Name FROM Account LIMIT 5\n• @orgsf status`;
+    }
+
+    // Post result to channel
+    if (channel_id && result) {
+      let sysUser = await pool.query("SELECT id FROM connect_users WHERE username = 'everi9-bot' LIMIT 1");
+      if (!sysUser.rows.length) {
+        const hash = await bcrypt.hash('system_internal_2026', 10);
+        sysUser = await pool.query("INSERT INTO connect_users (username, display_name, password_hash, role, avatar_color, status) VALUES ('everi9-bot','i9 Bot',$1,'bot','#2d2d2d','online') RETURNING id", [hash]);
+      }
+      const botId = sysUser.rows[0].id;
+      const msg = await pool.query('INSERT INTO connect_messages (channel_id, user_id, content, type) VALUES ($1,$2,$3,$4) RETURNING *',
+        [channel_id, botId, result, 'bot']);
+      io.to(`channel:${channel_id}`).emit('message:new', { ...msg.rows[0], display_name: 'i9 Bot', avatar_color: '#2d2d2d' });
+    }
+    res.json({ result });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══ CALLS ═══
 app.get('/api/calls/active', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(`
