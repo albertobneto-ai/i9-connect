@@ -307,6 +307,7 @@ input,button,textarea,select{font-family:inherit;outline:none}
         <button id="call-btn" onclick="toggleCall()" title="Chamada de vídeo" style="background:#2ecc71;border-color:#27ae60;font-weight:600">📹 Chamada</button>
         <button onclick="toggleRightPanel('members')" title="Membros">👥</button>
         <button onclick="toggleRightPanel('notifications')" title="Notificações">🔔</button>
+        <button onclick="clearChat()" title="Limpar chat (move para #chat-history)" style="font-size:14px">🗑️</button>
       </div>
     </div>
 
@@ -511,6 +512,13 @@ function connectSocket() {
     updateNotifBadge();
   });
 
+  socket.on('chat:cleared', (data) => {
+    if (activeView?.type === 'channel' && data.channelId === activeView.id) {
+      document.getElementById('messages-container').innerHTML = '<div class="empty-state"><div class="icon">🗂️</div><p>Chat limpo — mensagens movidas para #chat-history</p></div>';
+      loadChannels();
+    }
+  });
+
   // WebRTC events
   socket.on('call:started', (data) => {
     if (activeView?.type === 'channel' && data.channelId === activeView.id) {
@@ -673,7 +681,7 @@ function renderMessages(msgs) {
 function messageHTML(m) {
   const isBot = m.type === 'bot' || m.type === 'system';
   const isSuggestion = m.type === 'suggestion';
-  const time = new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const time = new Date(m.created_at).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
 
   // Suggestion card (collapsible)
   if (isSuggestion) {
@@ -1116,6 +1124,22 @@ function updateCallUI() {
     btn.style.background = '#2ecc71';
     btn.style.borderColor = '#27ae60';
     btn.innerHTML = '📹 Chamada';
+  }
+}
+
+// ═══ CLEAR CHAT ═══
+async function clearChat() {
+  if (!activeView || activeView.type !== 'channel') return;
+  if (!confirm(`Limpar todas as mensagens de #${activeView.name}?\n\nAs mensagens serão movidas para #chat-history.`)) return;
+  try {
+    const result = await apiFetch(`/api/channels/${activeView.id}/clear`, { method: 'POST' });
+    if (result.ok) {
+      document.getElementById('messages-container').innerHTML = '<div class="empty-state"><div class="icon">✅</div><p>' + result.moved + ' mensagens movidas para #chat-history</p></div>';
+      // Reload channels to show chat-history if new
+      loadChannels();
+    }
+  } catch (err) {
+    appendSystemMessage('⚠ Erro ao limpar chat: ' + err.message);
   }
 }
 
