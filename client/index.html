@@ -909,6 +909,8 @@ async function toggleCall() {
     // Start timer
     callStartTime = Date.now();
     callTimerInterval = setInterval(updateCallDuration, 1000);
+    // Auto-start transcription
+    startTranscription();
     // Check for active call or start new
     const activeCalls = await apiFetch('/api/calls/active');
     const existingCall = activeCalls.find(c => c.channel_id === activeView.id);
