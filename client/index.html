@@ -328,6 +328,7 @@ input,button,textarea,select{font-family:inherit;outline:none}
       <div class="call-panel-controls">
         <button class="ctl-btn mic" id="btn-mic" onclick="toggleMute()" title="Microfone">🎙</button>
         <button class="ctl-btn cam" id="btn-cam" onclick="toggleCamera()" title="Câmera">📷</button>
+        <button class="ctl-btn" id="btn-transcribe" onclick="toggleTranscription()" title="Transcrever áudio para texto" style="background:var(--bg4);color:#fff;font-size:13px">💬</button>
         <button class="ctl-btn hangup" onclick="leaveCall()" title="Encerrar">📞</button>
       </div>
     </div>
@@ -402,6 +403,8 @@ let isMuted = false;
 let isVideoOff = false;
 let callTimerInterval = null;
 let callStartTime = null;
+let isTranscribing = false;
+let recognition = null;
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' }
@@ -966,6 +969,7 @@ function endCall() {
   inCall = false;
   isMuted = false;
   isVideoOff = false;
+  stopTranscription();
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   Object.values(peerConnections).forEach(pc => pc.close());
   peerConnections = {};
@@ -1005,6 +1009,84 @@ function toggleCamera() {
     cell.classList.add('camera-off');
   } else {
     cell.classList.remove('camera-off');
+  }
+}
+
+// ═══ SPEECH-TO-TEXT TRANSCRIPTION ═══
+function toggleTranscription() {
+  if (isTranscribing) {
+    stopTranscription();
+  } else {
+    startTranscription();
+  }
+}
+
+function startTranscription() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    appendSystemMessage('⚠ Transcrição não suportada neste browser. Use Chrome ou Edge.');
+    return;
+  }
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  recognition.lang = 'pt-BR';
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (event) => {
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        const transcript = event.results[i][0].transcript.trim();
+        if (transcript.length > 1 && activeView?.type === 'channel') {
+          // Send transcription as a message with 🎤 prefix
+          socket.emit('message:send', {
+            channel_id: activeView.id,
+            content: '🎤 ' + transcript,
+            type: 'text'
+          });
+        }
+      }
+    }
+  };
+
+  recognition.onerror = (event) => {
+    if (event.error === 'no-speech') return; // Ignore silence
+    console.error('[Transcription] Error:', event.error);
+    if (event.error === 'not-allowed') {
+      appendSystemMessage('⚠ Permissão de microfone negada para transcrição.');
+      stopTranscription();
+    }
+  };
+
+  recognition.onend = () => {
+    // Auto-restart if still transcribing (recognition stops after silence)
+    if (isTranscribing && inCall) {
+      try { recognition.start(); } catch {}
+    }
+  };
+
+  try {
+    recognition.start();
+    isTranscribing = true;
+    const btn = document.getElementById('btn-transcribe');
+    btn.style.background = '#4a9eff';
+    btn.title = 'Transcrição ativa — clique para desativar';
+    appendSystemMessage('💬 Transcrição ativada — sua fala será transcrita no chat');
+  } catch (err) {
+    appendSystemMessage('⚠ Erro ao iniciar transcrição: ' + err.message);
+  }
+}
+
+function stopTranscription() {
+  isTranscribing = false;
+  if (recognition) {
+    try { recognition.stop(); } catch {}
+    recognition = null;
+  }
+  const btn = document.getElementById('btn-transcribe');
+  if (btn) {
+    btn.style.background = 'var(--bg4)';
+    btn.title = 'Transcrever áudio para texto';
   }
 }
 
