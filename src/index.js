@@ -378,32 +378,72 @@ app.get(/^\/(?!api\/).*/, (req, res) => {
   });
 });
 
-// ═══ AUTO-SUGGEST (Salesforce context detection) ═══
-const SF_KEYWORDS = /\b(salesforce|apex|flow|trigger|soql|sosl|lightning|lwc|aura|lead|leads|account|accounts|opportunity|opportunities|contact|contacts|campaign|dashboard|report|permission|profile|record.?type|validation.?rule|workflow|process.?builder|data.?cloud|mulesoft|agentforce|revenue.?cloud|service.?cloud|sales.?cloud|cpq|quote|order|contract|picklist|lookup|master.?detail|sharing|deployment|metadata|sandbox|scratch.?org|devhub|connected.?app|oauth|rest.?api|soap|bulk.?api|platform.?event|experience.?cloud|community|visualforce|screen.?flow|autolaunched|batch|future|queueable|invocable|object|custom.?field|page.?layout|related.?list|roll.?up|formula|field|org|admin|setup|permission.?set|managed.?package|unmanaged|changeset|deploy|cls|sfdx|sf\s+cli|einstein|copilot|omnistudio|vlocity|integration|webservice|callout|http.?request|named.?credential|external.?object)\b/i;
+// ═══ AUTO-SUGGEST (Salesforce context detection with conversation context) ═══
+const SF_KEYWORDS = /\b(salesforce|apex|flow|trigger|soql|sosl|lightning|lwc|aura|lead|leads|account|accounts|opportunity|opportunities|contact|contacts|campaign|dashboard|report|permission|profile|record.?type|validation.?rule|workflow|process.?builder|data.?cloud|mulesoft|agentforce|revenue.?cloud|service.?cloud|sales.?cloud|cpq|quote|order|contract|picklist|lookup|master.?detail|sharing|deployment|metadata|sandbox|scratch.?org|devhub|connected.?app|oauth|rest.?api|soap|bulk.?api|platform.?event|experience.?cloud|community|visualforce|screen.?flow|autolaunched|batch|future|queueable|invocable|object|custom.?field|page.?layout|related.?list|roll.?up|formula|field|org|admin|setup|permission.?set|managed.?package|unmanaged|changeset|deploy|cls|sfdx|sf\s+cli|einstein|copilot|omnistudio|vlocity|integration|webservice|callout|http.?request|named.?credential|external.?object|converter|conversão|passo.a.passo|como.criar|como.fazer|como.configur)\b/i;
 
 async function autoSuggest(channelId, content) {
   if (!OPENROUTER_KEY) return;
-  if (!SF_KEYWORDS.test(content)) return;
+
+  // Fetch recent messages for context
+  const recent = await pool.query(
+    `SELECT m.content, m.type, u.display_name FROM connect_messages m
+     JOIN connect_users u ON m.user_id = u.id
+     WHERE m.channel_id = $1 ORDER BY m.created_at DESC LIMIT 8`,
+    [channelId]
+  );
+  const recentMsgs = recent.rows.reverse();
+
+  // Check if there was a recent suggestion (bot is already in context)
+  const hasRecentSuggestion = recentMsgs.some(m => m.type === 'suggestion' || m.type === 'bot');
+
+  // Trigger if: SF keywords found OR there's recent bot context (follow-up)
+  if (!SF_KEYWORDS.test(content) && !hasRecentSuggestion) return;
+
+  // If follow-up without keywords, check if content is too short/generic to be a real question
+  if (!SF_KEYWORDS.test(content) && hasRecentSuggestion && content.length < 5) return;
+
   try {
     const fetch = (await import('node-fetch')).default;
+
+    // Build conversation history for context
+    const contextMessages = recentMsgs
+      .filter(m => m.type !== 'system')
+      .map(m => {
+        if (m.type === 'suggestion' || m.type === 'bot') {
+          return { role: 'assistant', content: m.content };
+        }
+        return { role: 'user', content: `[${m.display_name}]: ${m.content}` };
+      });
+
+    const messages = [
+      { role: 'system', content: `Você é o i9 Bot, um assistente especialista Salesforce integrado a um chat de equipe.
+
+REGRAS:
+- Responda em português do Brasil, de forma técnica e DETALHADA
+- Quando a pergunta pedir um passo a passo, forneça etapas numeradas com detalhes de cada clique/configuração
+- Quando for uma dúvida conceitual, explique com clareza usando exemplos práticos
+- Considere o CONTEXTO da conversa (mensagens anteriores) para entender continuações e referências
+- Se a mensagem atual é uma continuação de um assunto anterior, responda considerando todo o contexto
+- Se NÃO for relacionado a Salesforce ou tecnologia (saudação, conversa casual), responda exatamente: SKIP
+- Use formatação com ** para destaques e listas numeradas para procedimentos
+- Seja completo: 4-8 parágrafos para explicações, passos detalhados para procedimentos` },
+      ...contextMessages
+    ];
+
     const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENROUTER_KEY}` },
       body: JSON.stringify({
         model: BOT_MODEL,
-        max_tokens: 600,
-        messages: [
-          { role: 'system', content: `Você é um assistente especialista Salesforce integrado a um chat corporativo.
-Analise a mensagem do usuário. Se for uma pergunta ou discussão sobre Salesforce, responda de forma técnica, concisa e útil em português do Brasil (máximo 3 parágrafos).
-Se NÃO for uma pergunta/discussão Salesforce (apenas menção casual, saudação, etc), responda exatamente: SKIP` },
-          { role: 'user', content }
-        ]
+        max_tokens: 1500,
+        messages
       })
     });
     const data = await resp.json();
     const answer = data.choices?.[0]?.message?.content?.trim();
     if (!answer || answer === 'SKIP' || answer.startsWith('SKIP')) return;
-    // Get bot user
+
+    // Get or create bot user
     let sysUser = await pool.query("SELECT id FROM connect_users WHERE username = 'everi9-bot' LIMIT 1");
     if (!sysUser.rows.length) {
       const hash = await bcrypt.hash('system_internal_2026', 10);
@@ -415,7 +455,7 @@ Se NÃO for uma pergunta/discussão Salesforce (apenas menção casual, saudaç�
       [channelId, botId, answer, 'suggestion']
     );
     io.to(`channel:${channelId}`).emit('message:new', { ...msg.rows[0], display_name: 'i9 Bot', avatar_color: '#2d2d2d' });
-    console.log('[AutoSuggest] Suggestion posted to channel', channelId);
+    console.log('[AutoSuggest] Context-aware suggestion posted to channel', channelId);
   } catch (err) {
     console.error('[AutoSuggest] Error:', err.message);
   }
