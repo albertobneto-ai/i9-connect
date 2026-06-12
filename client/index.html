@@ -133,36 +133,30 @@ input,button,textarea,select{font-family:inherit;outline:none}
 .call-btn.hang{background:var(--red);color:#fff}
 .call-btn:hover{opacity:0.85}
 
-/* ═══ VIDEO CALL OVERLAY ═══ */
-.call-overlay{position:fixed;inset:0;background:#0a0a0a;z-index:50;display:none;flex-direction:column}
-.call-overlay.active{display:flex}
-.call-top-bar{padding:12px 20px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.6);z-index:2}
-.call-top-bar .call-title{font-size:14px;font-weight:600;color:#fff}
-.call-top-bar .call-duration{font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums}
-.video-grid{flex:1;display:grid;gap:8px;padding:8px;align-items:center;justify-items:center;overflow:hidden}
-.video-grid.grid-1{grid-template-columns:1fr}
-.video-grid.grid-2{grid-template-columns:1fr 1fr}
-.video-grid.grid-3,.video-grid.grid-4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
-.video-grid.grid-5,.video-grid.grid-6{grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr}
-.video-cell{position:relative;width:100%;height:100%;background:#1a1a1a;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}
-.video-cell video{width:100%;height:100%;object-fit:cover;border-radius:10px}
-.video-cell .video-label{position:absolute;bottom:8px;left:10px;background:rgba(0,0,0,0.65);color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;z-index:1}
-.video-cell .video-muted-icon{position:absolute;top:8px;right:10px;background:rgba(229,57,53,0.8);color:#fff;font-size:10px;padding:3px 6px;border-radius:8px}
-.video-cell.camera-off{background:#2d2d2d}
-.video-cell.camera-off .avatar-placeholder{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#fff}
-.local-video-wrap{position:absolute;bottom:80px;right:16px;width:180px;height:135px;border-radius:10px;overflow:hidden;border:2px solid var(--border);z-index:3;background:#1a1a1a;cursor:move}
-.local-video-wrap video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
-.local-video-wrap .video-label{position:absolute;bottom:4px;left:6px;background:rgba(0,0,0,0.6);color:#fff;font-size:9px;padding:2px 6px;border-radius:8px}
-.local-video-wrap.camera-off{display:flex;align-items:center;justify-content:center}
-.local-video-wrap.camera-off video{display:none}
-.local-video-wrap.camera-off .avatar-placeholder{font-size:20px;font-weight:700;color:#fff}
-.call-bottom-bar{padding:14px 20px;display:flex;align-items:center;justify-content:center;gap:12px;background:rgba(0,0,0,0.6);z-index:2}
-.ctl-btn{width:48px;height:48px;border-radius:50%;border:none;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:background 0.2s}
+/* ═══ VIDEO CALL PANEL (inline no chat) ═══ */
+.call-panel{display:none;background:#111;border-bottom:1px solid var(--border);overflow:hidden}
+.call-panel.active{display:flex;flex-direction:column}
+.call-panel-header{padding:8px 16px;display:flex;align-items:center;justify-content:space-between;background:#0d0d0d}
+.call-panel-header .call-info{display:flex;align-items:center;gap:10px}
+.call-panel-header .call-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse-dot 1.5s infinite}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:0.4}}
+.call-panel-header .call-label{font-size:12px;font-weight:600;color:var(--green)}
+.call-panel-header .call-duration{font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums;margin-left:6px}
+.call-panel-videos{display:flex;gap:6px;padding:8px 12px;overflow-x:auto;align-items:center;min-height:140px}
+.call-panel-videos .video-cell{position:relative;width:180px;min-width:160px;height:125px;flex-shrink:0;background:#1a1a1a;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.call-panel-videos .video-cell video{width:100%;height:100%;object-fit:cover;border-radius:8px}
+.call-panel-videos .video-cell .video-label{position:absolute;bottom:4px;left:6px;background:rgba(0,0,0,0.65);color:#fff;font-size:9px;font-weight:600;padding:2px 8px;border-radius:10px}
+.call-panel-videos .video-cell.camera-off{background:#2d2d2d}
+.call-panel-videos .video-cell.camera-off .avatar-placeholder{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff}
+.call-panel-videos .local-cell{border:2px solid var(--green)}
+.call-panel-videos .local-cell video{transform:scaleX(-1)}
+.call-panel-controls{display:flex;align-items:center;justify-content:center;gap:10px;padding:6px 12px 10px;background:#0d0d0d}
+.ctl-btn{width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:background 0.2s}
 .ctl-btn.mic{background:var(--bg4);color:#fff}
 .ctl-btn.mic.off{background:var(--red);color:#fff}
 .ctl-btn.cam{background:var(--bg4);color:#fff}
 .ctl-btn.cam.off{background:var(--red);color:#fff}
-.ctl-btn.hangup{background:var(--red);color:#fff;width:56px;height:56px;font-size:20px}
+.ctl-btn.hangup{background:var(--red);color:#fff;width:42px;height:42px;font-size:17px}
 .ctl-btn:hover{opacity:0.85}
 
 /* Notification items */
@@ -260,6 +254,28 @@ input,button,textarea,select{font-family:inherit;outline:none}
       </div>
     </div>
 
+    <!-- Call Panel (inline no chat) -->
+    <div class="call-panel" id="call-panel">
+      <div class="call-panel-header">
+        <div class="call-info">
+          <div class="call-dot"></div>
+          <span class="call-label">Chamada em andamento</span>
+          <span class="call-duration" id="call-duration">00:00</span>
+        </div>
+      </div>
+      <div class="call-panel-videos" id="video-grid">
+        <div class="video-cell local-cell" id="local-video-cell">
+          <video id="local-video" autoplay muted playsinline></video>
+          <div class="video-label">Você</div>
+        </div>
+      </div>
+      <div class="call-panel-controls">
+        <button class="ctl-btn mic" id="btn-mic" onclick="toggleMute()" title="Microfone">🎙</button>
+        <button class="ctl-btn cam" id="btn-cam" onclick="toggleCamera()" title="Câmera">📷</button>
+        <button class="ctl-btn hangup" onclick="leaveCall()" title="Encerrar">📞</button>
+      </div>
+    </div>
+
     <div class="messages-container" id="messages-container">
       <div class="empty-state">
         <div class="icon">💬</div>
@@ -306,25 +322,6 @@ input,button,textarea,select{font-family:inherit;outline:none}
     <h3>Nova Mensagem Direta</h3>
     <div id="dm-user-list" style="max-height:260px;overflow-y:auto"></div>
     <button class="login-toggle" onclick="closeModal('modal-dm')" style="margin-top:10px">Cancelar</button>
-  </div>
-</div>
-
-<!-- Video Call Overlay -->
-<div class="call-overlay" id="call-overlay">
-  <div class="call-top-bar">
-    <div class="call-title" id="call-channel-name">Chamada</div>
-    <div class="call-duration" id="call-duration">00:00</div>
-  </div>
-  <div class="video-grid grid-1" id="video-grid"></div>
-  <div class="local-video-wrap" id="local-video-wrap">
-    <video id="local-video" autoplay muted playsinline></video>
-    <div class="video-label">Você</div>
-    <div class="avatar-placeholder" id="local-avatar-ph" style="display:none"></div>
-  </div>
-  <div class="call-bottom-bar">
-    <button class="ctl-btn mic" id="btn-mic" onclick="toggleMute()" title="Microfone">🎙</button>
-    <button class="ctl-btn cam" id="btn-cam" onclick="toggleCamera()" title="Câmera">📷</button>
-    <button class="ctl-btn hangup" onclick="leaveCall()" title="Encerrar">📞</button>
   </div>
 </div>
 
@@ -812,14 +809,11 @@ async function toggleCall() {
   if (!activeView || activeView.type !== 'channel') return;
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    // Show local preview
+    // Show local preview in the inline panel
     const localVideo = document.getElementById('local-video');
     localVideo.srcObject = localStream;
-    document.getElementById('local-avatar-ph').textContent = initials(currentUser.display_name);
-    document.getElementById('local-avatar-ph').style.background = currentUser.avatar_color || '#555';
-    // Show overlay
-    document.getElementById('call-overlay').classList.add('active');
-    document.getElementById('call-channel-name').textContent = '#' + activeView.name;
+    // Show inline panel
+    document.getElementById('call-panel').classList.add('active');
     // Start timer
     callStartTime = Date.now();
     callTimerInterval = setInterval(updateCallDuration, 1000);
@@ -886,16 +880,18 @@ function endCall() {
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   Object.values(peerConnections).forEach(pc => pc.close());
   peerConnections = {};
-  // Clean overlay
-  document.getElementById('video-grid').innerHTML = '';
-  document.getElementById('call-overlay').classList.remove('active');
+  // Clean panel: remove remote cells, keep local cell
+  const grid = document.getElementById('video-grid');
+  grid.querySelectorAll('.video-cell:not(.local-cell)').forEach(el => el.remove());
   document.getElementById('local-video').srcObject = null;
+  // Hide panel
+  document.getElementById('call-panel').classList.remove('active');
   // Reset buttons
   document.getElementById('btn-mic').classList.remove('off');
   document.getElementById('btn-cam').classList.remove('off');
-  document.getElementById('local-video-wrap').classList.remove('camera-off');
   // Timer
   if (callTimerInterval) { clearInterval(callTimerInterval); callTimerInterval = null; }
+  document.getElementById('call-duration').textContent = '00:00';
   updateCallUI();
 }
 
@@ -915,20 +911,16 @@ function toggleCamera() {
   const btn = document.getElementById('btn-cam');
   btn.classList.toggle('off', isVideoOff);
   btn.textContent = isVideoOff ? '🚫' : '📷';
-  const wrap = document.getElementById('local-video-wrap');
+  const cell = document.getElementById('local-video-cell');
   if (isVideoOff) {
-    wrap.classList.add('camera-off');
-    document.getElementById('local-avatar-ph').style.display = 'flex';
+    cell.classList.add('camera-off');
   } else {
-    wrap.classList.remove('camera-off');
-    document.getElementById('local-avatar-ph').style.display = 'none';
+    cell.classList.remove('camera-off');
   }
 }
 
 function updateVideoGrid() {
-  const grid = document.getElementById('video-grid');
-  const count = grid.children.length;
-  grid.className = 'video-grid grid-' + Math.min(count || 1, 6);
+  // Flex layout handles positioning automatically
 }
 
 function updateCallDuration() {
