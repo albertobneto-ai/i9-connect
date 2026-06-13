@@ -194,6 +194,24 @@ input,button,textarea,select{font-family:inherit;outline:none}
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text3)}
 .empty-state .icon{font-size:48px;margin-bottom:12px}
 .empty-state p{font-size:13px}
+/* ═══ MODEL SELECTOR ═══ */
+.model-selector{display:flex;align-items:center;gap:6px;padding:4px 0 0}
+.model-btn{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:10px;color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:4px;font-weight:600;position:relative}
+.model-btn:hover{border-color:var(--accent);background:var(--bg3)}
+.model-btn .model-dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.model-dropdown{display:none;position:absolute;bottom:28px;left:0;background:var(--bg2);border:1px solid var(--border);border-radius:8px;min-width:260px;z-index:20;box-shadow:0 4px 20px rgba(0,0,0,0.5);overflow:hidden}
+.model-dropdown.open{display:block}
+.model-dropdown-title{padding:8px 12px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);border-bottom:1px solid var(--border)}
+.model-option{padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);border-bottom:1px solid var(--border)}
+.model-option:last-child{border-bottom:none}
+.model-option:hover{background:var(--bg3)}
+.model-option.active{background:var(--bg4);color:#fff}
+.model-option .mo-name{flex:1;font-weight:500}
+.model-option .mo-provider{font-size:9px;color:var(--text3)}
+.model-option .mo-badge{font-size:8px;font-weight:700;padding:1px 5px;border-radius:8px;text-transform:uppercase}
+.mo-badge.free{background:rgba(46,204,113,0.2);color:var(--green)}
+.mo-badge.unstable{background:rgba(241,196,15,0.2);color:var(--yellow)}
+
 /* ═══ ORG SELECTOR ═══ */
 .org-selector-wrap{padding:8px 14px}
 .org-select{width:100%;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;cursor:pointer}
@@ -350,6 +368,13 @@ input,button,textarea,select{font-family:inherit;outline:none}
         <button class="chat-send-btn" onclick="sendMessage()" id="send-btn" disabled>➤</button>
       </div>
       <div class="bot-hint" id="bot-hint" style="display:block">🤖 IA detecta tópicos Salesforce automaticamente · <strong>@bot</strong> pergunta direta · <strong>@orgsf</strong> descreva Lead</div>
+      <div class="model-selector">
+        <button class="model-btn" id="model-btn" onclick="toggleModelDropdown()">
+          <span class="model-dot"></span>
+          <span id="model-btn-label">Nemotron Ultra 550B</span> ▾
+          <div class="model-dropdown" id="model-dropdown"></div>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -462,6 +487,7 @@ function startApp() {
   loadChannels();
   loadUsers();
   loadDMs();
+  loadModels();
 }
 
 function initials(name) {
@@ -763,7 +789,7 @@ async function sendMessage() {
     input.value = '';
     input.style.height = 'auto';
     updateSendBtn();
-    await apiFetch('/api/bot/ask', { method: 'POST', body: JSON.stringify({ question, channel_id: activeView.id }) });
+    await apiFetch('/api/bot/ask', { method: 'POST', body: JSON.stringify({ question, channel_id: activeView.id, model: selectedModel }) });
     return;
   }
 
@@ -1158,6 +1184,52 @@ let selectedOrg = 'default';
 function selectOrg(orgId) {
   selectedOrg = orgId;
 }
+
+// ═══ MODEL SELECTOR ═══
+let selectedModel = '';
+let availableModels = [];
+
+async function loadModels() {
+  try {
+    availableModels = await apiFetch('/api/models');
+    if (availableModels.length) {
+      selectedModel = availableModels[0].id;
+      document.getElementById('model-btn-label').textContent = availableModels[0].name;
+    }
+    renderModelDropdown();
+  } catch {}
+}
+
+function renderModelDropdown() {
+  const dd = document.getElementById('model-dropdown');
+  dd.innerHTML = '<div class="model-dropdown-title">Selecionar Modelo IA</div>' +
+    availableModels.map(m =>
+      `<div class="model-option ${m.id === selectedModel ? 'active' : ''}" onclick="selectModel('${m.id}','${m.name}',event)">
+        <span class="mo-name">${m.name}</span>
+        <span class="mo-provider">${m.provider}</span>
+        <span class="mo-badge ${m.status === 'active' ? 'free' : 'unstable'}">${m.tier}${m.status === 'unstable' ? ' ⚠' : ''}</span>
+      </div>`
+    ).join('');
+}
+
+function toggleModelDropdown() {
+  document.getElementById('model-dropdown').classList.toggle('open');
+}
+
+function selectModel(modelId, modelName, e) {
+  e.stopPropagation();
+  selectedModel = modelId;
+  document.getElementById('model-btn-label').textContent = modelName;
+  document.getElementById('model-dropdown').classList.remove('open');
+  renderModelDropdown();
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.model-btn')) {
+    document.getElementById('model-dropdown')?.classList.remove('open');
+  }
+});
 
 // ═══ INIT ═══
 if (token && currentUser) {
