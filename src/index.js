@@ -18,7 +18,48 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'i9connect_secret_2026';
 const EVERI9_URL = process.env.EVERI9_URL || 'https://mcp-sf-provisioning-462dd29c2455.herokuapp.com';
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY || '';
-const BOT_MODEL = process.env.BOT_MODEL || 'deepseek/deepseek-chat-v3-0324:free';
+const ANTHROPIC_KEY = process.env.ANTHROPIC_KEY || '';
+const GROK_KEY = process.env.GROK_KEY || '';
+const BOT_MODEL = process.env.BOT_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free';
+const SSO_SECRET = process.env.SSO_SECRET || 'i9connect_sso_2026';
+
+// Multi-provider AI call
+async function callAI(model, messages, maxTokens = 1500) {
+  const fetch = (await import('node-fetch')).default;
+  // Anthropic (Claude)
+  if (model.startsWith('anthropic/') && ANTHROPIC_KEY) {
+    const anthropicModel = model.replace('anthropic/', '');
+    const sysMsg = messages.find(m => m.role === 'system')?.content || '';
+    const userMsgs = messages.filter(m => m.role !== 'system');
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: anthropicModel, max_tokens: maxTokens, system: sysMsg, messages: userMsgs })
+    });
+    const data = await resp.json();
+    return data.content?.[0]?.text || data.error?.message || 'Sem resposta.';
+  }
+  // Grok (xAI)
+  if ((model.startsWith('xai/') || model.includes('grok')) && GROK_KEY) {
+    const grokModel = model.replace('xai/', '');
+    const resp = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROK_KEY}` },
+      body: JSON.stringify({ model: grokModel, max_tokens: maxTokens, messages })
+    });
+    const data = await resp.json();
+    return data.choices?.[0]?.message?.content || 'Sem resposta.';
+  }
+  // OpenRouter (free + paid)
+  if (!OPENROUTER_KEY) return 'Bot não configurado. Defina OPENROUTER_KEY.';
+  const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENROUTER_KEY}` },
+    body: JSON.stringify({ model, max_tokens: maxTokens, messages })
+  });
+  const data = await resp.json();
+  return data.choices?.[0]?.message?.content || 'Sem resposta do modelo.';
+}
 
 // ═══ POSTGRES ═══
 const pool = new pg.Pool({
@@ -173,6 +214,61 @@ app.post('/api/auth/login', async (req, res) => {
     const token = jwt.sign({ id: user.id, username: user.username, display_name: user.display_name, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, user: { id: user.id, username: user.username, display_name: user.display_name, role: user.role, avatar_color: user.avatar_color } });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══ SSO (from Ever i9) ═══
+app.post('/api/auth/sso', async (req, res) => {
+  try {
+    const { username, display_name, sso_token } = req.body;
+    // Verify SSO token (HMAC)
+    const crypto = await import('crypto');
+    const expected = crypto.createHmac('sha256', SSO_SECRET).update(username + ':' + display_name).digest('hex');
+    if (sso_token !== expected) return res.status(401).json({ error: 'Invalid SSO token' });
+    // Find or create user
+    let { rows } = await pool.query('SELECT * FROM connect_users WHERE username = $1', [username]);
+    if (!rows.length) {
+      const hash = await bcrypt.hash('sso_' + Date.now(), 10);
+      const colors = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c'];
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const insert = await pool.query(
+        'INSERT INTO connect_users (username, display_name, password_hash, role, avatar_color) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+        [username, display_name, hash, 'member', color]
+      );
+      rows = insert.rows;
+      // Auto-join public channels
+      const channels = await pool.query("SELECT id FROM connect_channels WHERE is_private = FALSE");
+      for (const ch of channels.rows) {
+        await pool.query('INSERT INTO connect_channel_members (channel_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [ch.id, rows[0].id]);
+      }
+    }
+    const user = rows[0];
+    const token = jwt.sign({ id: user.id, username: user.username, display_name: user.display_name, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { id: user.id, username: user.username, display_name: user.display_name, role: user.role, avatar_color: user.avatar_color } });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Admin: create connect user (called from Ever i9)
+app.post('/api/admin/users', async (req, res) => {
+  try {
+    const { username, display_name, password, admin_key } = req.body;
+    if (admin_key !== SSO_SECRET) return res.status(401).json({ error: 'Invalid admin key' });
+    const hash = await bcrypt.hash(password, 10);
+    const colors = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c'];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const { rows } = await pool.query(
+      'INSERT INTO connect_users (username, display_name, password_hash, avatar_color) VALUES ($1,$2,$3,$4) RETURNING id, username, display_name, role, avatar_color',
+      [username.toLowerCase().trim(), display_name, hash, color]
+    );
+    // Auto-join public channels
+    const channels = await pool.query("SELECT id FROM connect_channels WHERE is_private = FALSE");
+    for (const ch of channels.rows) {
+      await pool.query('INSERT INTO connect_channel_members (channel_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [ch.id, rows[0].id]);
+    }
+    res.json({ ok: true, user: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Username already exists' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ═══ CHANNELS ═══
@@ -370,32 +466,33 @@ app.post('/api/webhook/everi9', async (req, res) => {
 
 // ═══ BOT IA ═══
 app.get('/api/models', authMiddleware, (req, res) => {
-  res.json([
+  const models = [
     { id: 'nvidia/nemotron-3-super-120b-a12b:free', name: 'Nemotron Super 120B', provider: 'NVIDIA', tier: 'free', status: 'active' },
     { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', name: 'Nemotron Ultra 550B', provider: 'NVIDIA', tier: 'free', status: 'active' },
     { id: 'nex-agi/nex-n2-pro:free', name: 'NEX N2 Pro', provider: 'NEX AGI', tier: 'free', status: 'active' },
     { id: 'google/gemma-4-31b-it:free', name: 'Gemma 4 31B', provider: 'Google', tier: 'free', status: 'unstable' },
-    { id: 'poolside/laguna-m.1:free', name: 'Laguna M.1', provider: 'Poolside', tier: 'free', status: 'unstable' },
-  ]);
+  ];
+  // Add paid models if keys available
+  if (ANTHROPIC_KEY) {
+    models.push({ id: 'anthropic/claude-sonnet-4-6-20250514', name: 'Claude Sonnet 4.6', provider: 'Anthropic', tier: 'paid', status: 'active' });
+    models.push({ id: 'anthropic/claude-opus-4-0-20250514', name: 'Claude Opus 4', provider: 'Anthropic', tier: 'paid', status: 'active' });
+  }
+  if (GROK_KEY) {
+    models.push({ id: 'xai/grok-3-latest', name: 'Grok 3', provider: 'xAI', tier: 'paid', status: 'active' });
+    models.push({ id: 'xai/grok-3-mini-latest', name: 'Grok 3 Mini', provider: 'xAI', tier: 'paid', status: 'active' });
+  }
+  res.json(models);
 });
 
 app.post('/api/bot/ask', authMiddleware, async (req, res) => {
   try {
     const { question, channel_id, model } = req.body;
     const useModel = model || BOT_MODEL;
-    if (!OPENROUTER_KEY) return res.json({ answer: 'Bot IA não configurado. Defina OPENROUTER_KEY no Heroku.' });
-    const fetch = (await import('node-fetch')).default;
     const sysPrompt = `Você é o i9 Bot, assistente especialista Salesforce integrado ao i9 Connect.
 Responda de forma detalhada e técnica em português do Brasil.
 Conhecimento: Sales Cloud, Service Cloud, Data Cloud, Revenue Cloud, Agentforce, MuleSoft, Experience Cloud.
 Use ** para destaques, listas numeradas para procedimentos. Seja completo e útil.`;
-    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENROUTER_KEY}` },
-      body: JSON.stringify({ model: useModel, max_tokens: 1500, messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: question }] })
-    });
-    const data = await resp.json();
-    const answer = data.choices?.[0]?.message?.content || 'Sem resposta do modelo.';
+    const answer = await callAI(useModel, [{ role: 'system', content: sysPrompt }, { role: 'user', content: question }], 1500);
     // Save bot response as message in channel
     if (channel_id) {
       let sysUser = await pool.query("SELECT id FROM connect_users WHERE username = 'everi9-bot' LIMIT 1");
@@ -403,7 +500,7 @@ Use ** para destaques, listas numeradas para procedimentos. Seja completo e úti
         const botId = sysUser.rows[0].id;
         const msg = await pool.query('INSERT INTO connect_messages (channel_id, user_id, content, type) VALUES ($1,$2,$3,$4) RETURNING *',
           [channel_id, botId, answer, 'bot']);
-        io.to(`channel:${channel_id}`).emit('message:new', { ...msg.rows[0], display_name: 'Ever i9 Bot', avatar_color: '#2d2d2d' });
+        io.to(`channel:${channel_id}`).emit('message:new', { ...msg.rows[0], display_name: 'i9 Bot', avatar_color: '#2d2d2d' });
       }
     }
     res.json({ answer });
@@ -577,18 +674,8 @@ REGRAS:
       ...contextMessages
     ];
 
-    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENROUTER_KEY}` },
-      body: JSON.stringify({
-        model: BOT_MODEL,
-        max_tokens: 1500,
-        messages
-      })
-    });
-    const data = await resp.json();
-    const answer = data.choices?.[0]?.message?.content?.trim();
-    if (!answer || answer === 'SKIP' || answer.startsWith('SKIP')) return;
+    const answer = await callAI(BOT_MODEL, messages, 1500);
+    if (!answer || answer === 'SKIP' || answer.startsWith('SKIP') || answer === 'Sem resposta do modelo.') return;
 
     // Get or create bot user
     let sysUser = await pool.query("SELECT id FROM connect_users WHERE username = 'everi9-bot' LIMIT 1");
