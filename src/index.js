@@ -371,11 +371,11 @@ app.post('/api/webhook/everi9', async (req, res) => {
 // ═══ BOT IA ═══
 app.get('/api/models', authMiddleware, (req, res) => {
   res.json([
-    { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', name: 'Nemotron Ultra 550B', provider: 'NVIDIA', tier: 'free', status: 'active' },
     { id: 'nvidia/nemotron-3-super-120b-a12b:free', name: 'Nemotron Super 120B', provider: 'NVIDIA', tier: 'free', status: 'active' },
+    { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', name: 'Nemotron Ultra 550B', provider: 'NVIDIA', tier: 'free', status: 'active' },
+    { id: 'nex-agi/nex-n2-pro:free', name: 'NEX N2 Pro', provider: 'NEX AGI', tier: 'free', status: 'active' },
     { id: 'google/gemma-4-31b-it:free', name: 'Gemma 4 31B', provider: 'Google', tier: 'free', status: 'unstable' },
     { id: 'poolside/laguna-m.1:free', name: 'Laguna M.1', provider: 'Poolside', tier: 'free', status: 'unstable' },
-    { id: 'nex-agi/nex-n2-pro:free', name: 'NEX N2 Pro', provider: 'NEX AGI', tier: 'free', status: 'active' },
   ]);
 });
 
