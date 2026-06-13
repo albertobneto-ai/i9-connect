@@ -324,9 +324,11 @@ input,button,textarea,select{font-family:inherit;outline:none}
       </div>
       <div class="chat-header-actions">
         <button id="call-btn" onclick="toggleCall()" title="Chamada de vídeo" style="background:#2ecc71;border-color:#27ae60;font-weight:600">📹 Chamada</button>
+        <button onclick="startAudioCapture()" id="btn-capture" title="Capturar áudio (Whisper)">🔊</button>
+        <button onclick="showPasteTranscript()" title="Colar transcript">📋</button>
         <button onclick="toggleRightPanel('members')" title="Membros">👥</button>
         <button onclick="toggleRightPanel('notifications')" title="Notificações">🔔</button>
-        <button onclick="clearChat()" title="Limpar chat (move para #chat-history)" style="font-size:14px">🗑️</button>
+        <button onclick="clearChat()" title="Limpar chat" style="font-size:14px">🗑️</button>
       </div>
     </div>
 
@@ -370,10 +372,6 @@ input,button,textarea,select{font-family:inherit;outline:none}
       </div>
       <div class="bot-hint" id="bot-hint" style="display:block">
         🤖 IA detecta Salesforce · <strong>@bot</strong> · <strong>@orgsf</strong>
-      </div>
-      <div style="display:flex;gap:6px;padding:2px 0 0">
-        <button onclick="startAudioCapture()" id="btn-capture" style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;flex:1" title="Capturar áudio do computador (Whisper)">🔊 Capturar Áudio</button>
-        <button onclick="showPasteTranscript()" style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;flex:1" title="Colar transcript de reunião">📋 Colar Transcript</button>
       </div>
       <div class="model-selector">
         <button class="model-btn" id="model-btn" onclick="toggleModelDropdown()">
