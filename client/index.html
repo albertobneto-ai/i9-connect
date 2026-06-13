@@ -1214,38 +1214,41 @@ async function startAudioCapture() {
     return;
   }
   try {
-    // 1. Capture system/tab audio
-    captureStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
-    captureStream.getVideoTracks().forEach(t => t.stop());
-    const systemAudioTracks = captureStream.getAudioTracks();
-    if (!systemAudioTracks.length) {
-      appendSystemMessage('⚠ Marque "Compartilhar áudio" ao selecionar a aba');
-      captureStream.getTracks().forEach(t => t.stop());
-      return;
+    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+    let mergedStream;
+
+    if (isMobile || !navigator.mediaDevices.getDisplayMedia) {
+      // Mobile: microphone only → Whisper
+      captureMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mergedStream = captureMicStream;
+      appendSystemMessage('🎤 Captura de microfone ativa — Whisper transcreve a cada 15s');
+    } else {
+      // Desktop: system audio + microphone
+      captureStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+      captureStream.getVideoTracks().forEach(t => t.stop());
+      const systemAudioTracks = captureStream.getAudioTracks();
+      if (!systemAudioTracks.length) {
+        appendSystemMessage('⚠ Marque "Compartilhar áudio" ao selecionar a aba');
+        captureStream.getTracks().forEach(t => t.stop());
+        return;
+      }
+      captureMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      captureAudioCtx = new AudioContext();
+      const destination = captureAudioCtx.createMediaStreamDestination();
+      captureAudioCtx.createMediaStreamSource(new MediaStream(systemAudioTracks)).connect(destination);
+      captureAudioCtx.createMediaStreamSource(captureMicStream).connect(destination);
+      mergedStream = destination.stream;
+      systemAudioTracks[0].onended = () => stopAudioCapture();
+      appendSystemMessage('🔊 Captura ativa — computador + microfone → Whisper a cada 15s');
     }
-
-    // 2. Capture microphone
-    captureMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-    // 3. Merge both streams using AudioContext
-    captureAudioCtx = new AudioContext();
-    const destination = captureAudioCtx.createMediaStreamDestination();
-    const systemSource = captureAudioCtx.createMediaStreamSource(new MediaStream(systemAudioTracks));
-    systemSource.connect(destination);
-    const micSource = captureAudioCtx.createMediaStreamSource(captureMicStream);
-    micSource.connect(destination);
-
-    const mergedStream = destination.stream;
 
     isCapturing = true;
     const btn = document.getElementById('btn-capture');
     btn.style.background = 'var(--red)';
     btn.style.color = '#fff';
     btn.style.borderColor = 'var(--red)';
-    btn.textContent = '⏹ Parar Captura';
-    appendSystemMessage('🔊 Captura ativa — computador + microfone → Whisper a cada 15s');
+    btn.textContent = '⏹';
 
-    // 4. Record merged stream in chunks
     captureRecorder = new MediaRecorder(mergedStream, { mimeType: 'audio/webm;codecs=opus' });
     captureRecorder.ondataavailable = async (e) => {
       if (e.data.size > 0) {
@@ -1264,9 +1267,6 @@ async function startAudioCapture() {
       }
     };
     captureRecorder.start(15000);
-
-    // Stop when system audio track ends
-    systemAudioTracks[0].onended = () => stopAudioCapture();
   } catch (err) {
     if (err.name !== 'NotAllowedError') {
       appendSystemMessage('⚠ Erro na captura: ' + err.message);
