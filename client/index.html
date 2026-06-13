@@ -369,11 +369,11 @@ input,button,textarea,select{font-family:inherit;outline:none}
         <button class="chat-send-btn" onclick="sendMessage()" id="send-btn" disabled>➤</button>
       </div>
       <div class="bot-hint" id="bot-hint" style="display:block">
-        🤖 IA detecta Salesforce automaticamente · <strong>@bot</strong> pergunta direta · <strong>@orgsf</strong> descreva Lead
-        <span style="float:right;display:flex;gap:6px">
-          <button onclick="startAudioCapture()" id="btn-capture" style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer" title="Capturar áudio do computador (Whisper)">🔊 Capturar</button>
-          <button onclick="showPasteTranscript()" style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer" title="Colar transcript de reunião">📋 Transcript</button>
-        </span>
+        🤖 IA detecta Salesforce · <strong>@bot</strong> · <strong>@orgsf</strong>
+      </div>
+      <div style="display:flex;gap:6px;padding:2px 0 0">
+        <button onclick="startAudioCapture()" id="btn-capture" style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;flex:1" title="Capturar áudio do computador (Whisper)">🔊 Capturar Áudio</button>
+        <button onclick="showPasteTranscript()" style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;flex:1" title="Colar transcript de reunião">📋 Colar Transcript</button>
       </div>
       <div class="model-selector">
         <button class="model-btn" id="model-btn" onclick="toggleModelDropdown()">
