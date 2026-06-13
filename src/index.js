@@ -369,19 +369,30 @@ app.post('/api/webhook/everi9', async (req, res) => {
 });
 
 // ═══ BOT IA ═══
+app.get('/api/models', authMiddleware, (req, res) => {
+  res.json([
+    { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', name: 'Nemotron Ultra 550B', provider: 'NVIDIA', tier: 'free', status: 'active' },
+    { id: 'nvidia/nemotron-3-super-120b-a12b:free', name: 'Nemotron Super 120B', provider: 'NVIDIA', tier: 'free', status: 'active' },
+    { id: 'google/gemma-4-31b-it:free', name: 'Gemma 4 31B', provider: 'Google', tier: 'free', status: 'unstable' },
+    { id: 'poolside/laguna-m.1:free', name: 'Laguna M.1', provider: 'Poolside', tier: 'free', status: 'unstable' },
+    { id: 'nex-agi/nex-n2-pro:free', name: 'NEX N2 Pro', provider: 'NEX AGI', tier: 'free', status: 'active' },
+  ]);
+});
+
 app.post('/api/bot/ask', authMiddleware, async (req, res) => {
   try {
-    const { question, channel_id } = req.body;
+    const { question, channel_id, model } = req.body;
+    const useModel = model || BOT_MODEL;
     if (!OPENROUTER_KEY) return res.json({ answer: 'Bot IA não configurado. Defina OPENROUTER_KEY no Heroku.' });
     const fetch = (await import('node-fetch')).default;
-    const sysPrompt = `Você é o assistente IA do i9 Connect, integrado à plataforma Ever i9 de aceleração Salesforce.
-Responda de forma direta e técnica em português do Brasil.
-Você tem conhecimento sobre Salesforce (Sales Cloud, Service Cloud, Data Cloud, Revenue Cloud, Agentforce, MuleSoft).
-Seja conciso, útil e profissional. Use markdown quando útil.`;
+    const sysPrompt = `Você é o i9 Bot, assistente especialista Salesforce integrado ao i9 Connect.
+Responda de forma detalhada e técnica em português do Brasil.
+Conhecimento: Sales Cloud, Service Cloud, Data Cloud, Revenue Cloud, Agentforce, MuleSoft, Experience Cloud.
+Use ** para destaques, listas numeradas para procedimentos. Seja completo e útil.`;
     const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENROUTER_KEY}` },
-      body: JSON.stringify({ model: BOT_MODEL, max_tokens: 1000, messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: question }] })
+      body: JSON.stringify({ model: useModel, max_tokens: 1500, messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: question }] })
     });
     const data = await resp.json();
     const answer = data.choices?.[0]?.message?.content || 'Sem resposta do modelo.';
