@@ -22,6 +22,7 @@ const ANTHROPIC_KEY = process.env.ANTHROPIC_KEY || '';
 const GROK_KEY = process.env.GROK_KEY || '';
 const BOT_MODEL = process.env.BOT_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free';
 const SSO_SECRET = process.env.SSO_SECRET || 'i9connect_sso_2026';
+const GROQ_KEY = process.env.GROQ_KEY || '';
 
 // Multi-provider AI call
 async function callAI(model, messages, maxTokens = 1500) {
@@ -508,6 +509,53 @@ Use ** para destaques, listas numeradas para procedimentos. Seja completo e úti
 });
 
 // ═══ CALLS ═══
+
+// ═══ WHISPER TRANSCRIPTION (via Groq) ═══
+app.post('/api/transcribe', authMiddleware, async (req, res) => {
+  try {
+    if (!GROQ_KEY) return res.status(500).json({ error: 'GROQ_KEY not configured' });
+    const channelId = req.query.channel_id;
+    const { audio } = req.body;
+    if (!audio) return res.json({ text: '' });
+    const audioBuffer = Buffer.from(audio, 'base64');
+    if (audioBuffer.length < 1000) return res.json({ text: '' });
+
+    const boundary = 'whisper' + Date.now();
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.webm"\r\nContent-Type: audio/webm\r\n\r\n`),
+      audioBuffer,
+      Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-large-v3-turbo\r\n`),
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\npt\r\n`),
+      Buffer.from(`--${boundary}--\r\n`)
+    ]);
+
+    const fetch = (await import('node-fetch')).default;
+    const resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+      body
+    });
+    const data = await resp.json();
+    const text = data.text?.trim() || '';
+    if (!text) return res.json({ text: '' });
+
+    // Post transcription to channel
+    if (channelId) {
+      let sysUser = await pool.query("SELECT id FROM connect_users WHERE username = 'everi9-bot' LIMIT 1");
+      if (sysUser.rows.length) {
+        const botId = sysUser.rows[0].id;
+        const msg = await pool.query('INSERT INTO connect_messages (channel_id, user_id, content, type) VALUES ($1,$2,$3,$4) RETURNING *',
+          [channelId, botId, '🎤 ' + text, 'text']);
+        io.to(`channel:${channelId}`).emit('message:new', { ...msg.rows[0], display_name: 'i9 Bot', avatar_color: '#2d2d2d' });
+      }
+      if (text.length > 8) autoSuggest(parseInt(channelId), text).catch(() => {});
+    }
+    res.json({ text });
+  } catch (err) {
+    console.error('[Whisper]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ═══ ORG SF PROXY ═══
 app.get('/api/orgs-available', authMiddleware, async (req, res) => {
