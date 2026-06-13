@@ -1249,24 +1249,39 @@ async function startAudioCapture() {
     btn.style.borderColor = 'var(--red)';
     btn.textContent = '⏹';
 
-    captureRecorder = new MediaRecorder(mergedStream, { mimeType: 'audio/webm;codecs=opus' });
+    // Detect best mimeType
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+      : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
+
+    captureRecorder = new MediaRecorder(mergedStream, mimeType ? { mimeType } : {});
+    let chunkCount = 0;
     captureRecorder.ondataavailable = async (e) => {
-      if (e.data.size > 0) {
+      if (e.data.size < 2000) return; // skip tiny/silent chunks
+      chunkCount++;
+      const indicator = document.getElementById('btn-capture');
+      if (indicator) indicator.textContent = '⏳';
+      try {
+        const blob = e.data;
         const reader = new FileReader();
         reader.onloadend = async () => {
           const base64 = reader.result.split(',')[1];
+          if (!base64 || base64.length < 500) { if (indicator) indicator.textContent = '⏹'; return; }
           try {
-            await fetch(API + '/api/transcribe?channel_id=' + activeView.id, {
+            const resp = await fetch(API + '/api/transcribe?channel_id=' + activeView.id, {
               method: 'POST',
               headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
               body: JSON.stringify({ audio: base64 })
             });
-          } catch {}
+            const data = await resp.json();
+            if (data.text) console.log('[Whisper] Chunk', chunkCount, ':', data.text.substring(0, 80));
+          } catch (err) { console.error('[Whisper] Send error:', err); }
+          if (indicator) indicator.textContent = '⏹';
         };
-        reader.readAsDataURL(e.data);
-      }
+        reader.readAsDataURL(blob);
+      } catch (err) { console.error('[Whisper] Process error:', err); if (indicator) indicator.textContent = '⏹'; }
     };
-    captureRecorder.start(15000);
+    captureRecorder.start(20000); // 20s chunks for better accuracy
   } catch (err) {
     if (err.name !== 'NotAllowedError') {
       appendSystemMessage('⚠ Erro na captura: ' + err.message);
