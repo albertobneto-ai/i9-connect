@@ -777,7 +777,7 @@ async function sendMessage() {
     input.value = '';
     input.style.height = 'auto';
     updateSendBtn();
-    await apiFetch('/api/orgsf', { method: 'POST', body: JSON.stringify({ command, org_id: selectedOrg, channel_id: activeView.id }) });
+    apiFetch('/api/orgsf', { method: 'POST', body: JSON.stringify({ command, org_id: selectedOrg, channel_id: activeView.id }) }).catch(() => {});
     if (window.innerWidth < 768) closeSidebar();
     return;
   }
@@ -789,7 +789,8 @@ async function sendMessage() {
     input.value = '';
     input.style.height = 'auto';
     updateSendBtn();
-    await apiFetch('/api/bot/ask', { method: 'POST', body: JSON.stringify({ question, channel_id: activeView.id, model: selectedModel }) });
+    // Ask bot (response arrives via socket, HTTP may timeout on Heroku - that's OK)
+    apiFetch('/api/bot/ask', { method: 'POST', body: JSON.stringify({ question, channel_id: activeView.id, model: selectedModel }) }).catch(() => {});
     return;
   }
 
