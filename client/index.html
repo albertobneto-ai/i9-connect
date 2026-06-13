@@ -1205,6 +1205,7 @@ let captureStream = null;
 let captureMicStream = null;
 let captureRecorder = null;
 let captureAudioCtx = null;
+let captureInterval = null;
 let isCapturing = false;
 
 async function startAudioCapture() {
@@ -1256,32 +1257,36 @@ async function startAudioCapture() {
 
     captureRecorder = new MediaRecorder(mergedStream, mimeType ? { mimeType } : {});
     let chunkCount = 0;
-    captureRecorder.ondataavailable = async (e) => {
-      if (e.data.size < 2000) return; // skip tiny/silent chunks
+
+    captureRecorder.ondataavailable = (e) => {
+      if (e.data.size < 2000) return;
       chunkCount++;
-      const indicator = document.getElementById('btn-capture');
-      if (indicator) indicator.textContent = '⏳';
-      try {
-        const blob = e.data;
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-          const base64 = reader.result.split(',')[1];
-          if (!base64 || base64.length < 500) { if (indicator) indicator.textContent = '⏹'; return; }
-          try {
-            const resp = await fetch(API + '/api/transcribe?channel_id=' + activeView.id, {
-              method: 'POST',
-              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ audio: base64 })
-            });
-            const data = await resp.json();
-            if (data.text) console.log('[Whisper] Chunk', chunkCount, ':', data.text.substring(0, 80));
-          } catch (err) { console.error('[Whisper] Send error:', err); }
-          if (indicator) indicator.textContent = '⏹';
-        };
-        reader.readAsDataURL(blob);
-      } catch (err) { console.error('[Whisper] Process error:', err); if (indicator) indicator.textContent = '⏹'; }
+      const btn = document.getElementById('btn-capture');
+      if (btn) btn.textContent = '⏳';
+      const blob = e.data;
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result.split(',')[1];
+        if (!base64 || base64.length < 500) { if (btn) btn.textContent = '⏹'; return; }
+        fetch(API + '/api/transcribe?channel_id=' + activeView.id, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ audio: base64 })
+        }).then(r => r.json()).then(d => {
+          if (d.text) console.log('[Whisper] Chunk', chunkCount, ':', d.text.substring(0, 80));
+          if (btn) btn.textContent = '⏹';
+        }).catch(() => { if (btn) btn.textContent = '⏹'; });
+      };
+      reader.readAsDataURL(blob);
     };
-    captureRecorder.start(20000); // 20s chunks for better accuracy
+
+    // Start continuous recording, use interval to request data
+    captureRecorder.start();
+    captureInterval = setInterval(() => {
+      if (captureRecorder && captureRecorder.state === 'recording') {
+        captureRecorder.requestData();
+      }
+    }, 20000);
   } catch (err) {
     if (err.name !== 'NotAllowedError') {
       appendSystemMessage('⚠ Erro na captura: ' + err.message);
@@ -1291,6 +1296,7 @@ async function startAudioCapture() {
 
 function stopAudioCapture() {
   isCapturing = false;
+  if (captureInterval) { clearInterval(captureInterval); captureInterval = null; }
   if (captureRecorder && captureRecorder.state !== 'inactive') captureRecorder.stop();
   if (captureStream) captureStream.getTracks().forEach(t => t.stop());
   if (captureMicStream) captureMicStream.getTracks().forEach(t => t.stop());
