@@ -368,7 +368,13 @@ input,button,textarea,select{font-family:inherit;outline:none}
           onkeydown="handleInputKey(event)" oninput="handleTyping()"></textarea>
         <button class="chat-send-btn" onclick="sendMessage()" id="send-btn" disabled>➤</button>
       </div>
-      <div class="bot-hint" id="bot-hint" style="display:block">🤖 IA detecta tópicos Salesforce automaticamente · <strong>@bot</strong> pergunta direta · <strong>@orgsf</strong> descreva Lead</div>
+      <div class="bot-hint" id="bot-hint" style="display:block">
+        🤖 IA detecta Salesforce automaticamente · <strong>@bot</strong> pergunta direta · <strong>@orgsf</strong> descreva Lead
+        <span style="float:right;display:flex;gap:6px">
+          <button onclick="startAudioCapture()" id="btn-capture" style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer" title="Capturar áudio do computador (Whisper)">🔊 Capturar</button>
+          <button onclick="showPasteTranscript()" style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer" title="Colar transcript de reunião">📋 Transcript</button>
+        </span>
+      </div>
       <div class="model-selector">
         <button class="model-btn" id="model-btn" onclick="toggleModelDropdown()">
           <span class="model-dot"></span>
@@ -1194,6 +1200,108 @@ function updateCallUI() {
     btn.style.borderColor = '#27ae60';
     btn.innerHTML = '📹 Chamada';
   }
+}
+
+// ═══ WHISPER AUDIO CAPTURE (system audio) ═══
+let captureStream = null;
+let captureRecorder = null;
+let isCapturing = false;
+
+async function startAudioCapture() {
+  if (isCapturing) { stopAudioCapture(); return; }
+  if (!activeView || activeView.type !== 'channel') {
+    appendSystemMessage('⚠ Selecione um canal antes de capturar áudio');
+    return;
+  }
+  try {
+    // Request tab/screen audio
+    captureStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+    // Stop video track (we only need audio)
+    captureStream.getVideoTracks().forEach(t => t.stop());
+    const audioTracks = captureStream.getAudioTracks();
+    if (!audioTracks.length) {
+      appendSystemMessage('⚠ Marque "Compartilhar áudio" ao selecionar a aba');
+      return;
+    }
+    const audioStream = new MediaStream(audioTracks);
+    isCapturing = true;
+    const btn = document.getElementById('btn-capture');
+    btn.style.background = 'var(--red)';
+    btn.style.color = '#fff';
+    btn.style.borderColor = 'var(--red)';
+    btn.textContent = '⏹ Parar';
+    appendSystemMessage('🔊 Captura de áudio iniciada — Whisper transcreve a cada 15s');
+
+    // Record in chunks
+    captureRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm;codecs=opus' });
+    const chunks = [];
+    captureRecorder.ondataavailable = async (e) => {
+      if (e.data.size > 0) {
+        // Convert to base64 and send to server
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          const base64 = reader.result.split(',')[1];
+          try {
+            await fetch(API + '/api/transcribe?channel_id=' + activeView.id, {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ audio: base64 })
+            });
+          } catch {}
+        };
+        reader.readAsDataURL(e.data);
+      }
+    };
+    captureRecorder.start(15000); // chunk every 15s
+
+    // Stop when track ends (user clicks stop sharing)
+    audioTracks[0].onended = () => stopAudioCapture();
+  } catch (err) {
+    if (err.name !== 'NotAllowedError') {
+      appendSystemMessage('⚠ Erro na captura: ' + err.message);
+    }
+  }
+}
+
+function stopAudioCapture() {
+  isCapturing = false;
+  if (captureRecorder && captureRecorder.state !== 'inactive') captureRecorder.stop();
+  if (captureStream) captureStream.getTracks().forEach(t => t.stop());
+  captureRecorder = null;
+  captureStream = null;
+  const btn = document.getElementById('btn-capture');
+  if (btn) {
+    btn.style.background = 'none';
+    btn.style.color = 'var(--text3)';
+    btn.style.borderColor = 'var(--border)';
+    btn.textContent = '🔊 Capturar';
+  }
+  appendSystemMessage('🔊 Captura de áudio encerrada');
+}
+
+// ═══ PASTE TRANSCRIPT ═══
+function showPasteTranscript() {
+  if (!activeView || activeView.type !== 'channel') return;
+  const existing = document.getElementById('transcript-area');
+  if (existing) { existing.remove(); return; }
+  const div = document.createElement('div');
+  div.id = 'transcript-area';
+  div.style.cssText = 'padding:8px 20px;background:var(--bg2);border-top:1px solid var(--border)';
+  div.innerHTML = `
+    <textarea id="transcript-text" placeholder="Cole aqui o transcript da reunião do Teams..." style="width:100%;height:80px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px;font-size:12px;resize:vertical;font-family:inherit"></textarea>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <button onclick="sendTranscript()" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600">Enviar para Agent</button>
+      <button onclick="document.getElementById('transcript-area').remove()" style="padding:6px 14px;background:var(--bg4);color:var(--text2);border:none;border-radius:6px;font-size:11px;cursor:pointer">Cancelar</button>
+    </div>`;
+  document.querySelector('.chat-input-area').before(div);
+}
+
+async function sendTranscript() {
+  const text = document.getElementById('transcript-text')?.value?.trim();
+  if (!text || !activeView) return;
+  // Send as user message
+  socket.emit('message:send', { channel_id: activeView.id, content: '📋 Transcript de reunião:\n' + text });
+  document.getElementById('transcript-area').remove();
 }
 
 // ═══ CLEAR CHAT ═══
