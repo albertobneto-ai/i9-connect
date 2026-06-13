@@ -1211,36 +1211,44 @@ let isCapturing = false;
 async function startAudioCapture() {
   if (isCapturing) { stopAudioCapture(); return; }
   if (!activeView || activeView.type !== 'channel') {
-    appendSystemMessage('⚠ Selecione um canal antes de capturar áudio');
+    appendSystemMessage('⚠ Selecione um canal primeiro');
     return;
   }
   try {
     const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-    let mergedStream;
+    let recordStream;
 
     if (isMobile || !navigator.mediaDevices.getDisplayMedia) {
-      // Mobile: microphone only → Whisper
-      captureMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mergedStream = captureMicStream;
-      appendSystemMessage('🎤 Captura de microfone ativa — Whisper transcreve a cada 15s');
+      // Mobile: use existing call mic or open new one
+      if (localStream && localStream.getAudioTracks().length > 0) {
+        recordStream = new MediaStream(localStream.getAudioTracks());
+        appendSystemMessage('🎤 Gravando seu microfone (da chamada) → Whisper');
+      } else {
+        captureMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recordStream = captureMicStream;
+        appendSystemMessage('🎤 Gravando microfone → Whisper');
+      }
     } else {
-      // Desktop: system audio + microphone
+      // Desktop: system audio + mic
       captureStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
       captureStream.getVideoTracks().forEach(t => t.stop());
-      const systemAudioTracks = captureStream.getAudioTracks();
-      if (!systemAudioTracks.length) {
-        appendSystemMessage('⚠ Marque "Compartilhar áudio" ao selecionar a aba');
+      const sysTracks = captureStream.getAudioTracks();
+      if (!sysTracks.length) {
+        appendSystemMessage('⚠ Marque "Compartilhar áudio"');
         captureStream.getTracks().forEach(t => t.stop());
         return;
       }
-      captureMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const micStream = localStream && localStream.getAudioTracks().length > 0
+        ? new MediaStream(localStream.getAudioTracks())
+        : await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!localStream) captureMicStream = micStream;
       captureAudioCtx = new AudioContext();
-      const destination = captureAudioCtx.createMediaStreamDestination();
-      captureAudioCtx.createMediaStreamSource(new MediaStream(systemAudioTracks)).connect(destination);
-      captureAudioCtx.createMediaStreamSource(captureMicStream).connect(destination);
-      mergedStream = destination.stream;
-      systemAudioTracks[0].onended = () => stopAudioCapture();
-      appendSystemMessage('🔊 Captura ativa — computador + microfone → Whisper a cada 15s');
+      const dest = captureAudioCtx.createMediaStreamDestination();
+      captureAudioCtx.createMediaStreamSource(new MediaStream(sysTracks)).connect(dest);
+      captureAudioCtx.createMediaStreamSource(micStream).connect(dest);
+      recordStream = dest.stream;
+      sysTracks[0].onended = () => stopAudioCapture();
+      appendSystemMessage('🔊 Gravando computador + microfone → Whisper');
     }
 
     isCapturing = true;
@@ -1250,47 +1258,47 @@ async function startAudioCapture() {
     btn.style.borderColor = 'var(--red)';
     btn.textContent = '⏹';
 
-    // Detect best mimeType
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
-      : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
-      : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
-
-    captureRecorder = new MediaRecorder(mergedStream, mimeType ? { mimeType } : {});
-    let chunkCount = 0;
-
-    captureRecorder.ondataavailable = (e) => {
-      if (e.data.size < 2000) return;
-      chunkCount++;
-      const btn = document.getElementById('btn-capture');
-      if (btn) btn.textContent = '⏳';
-      const blob = e.data;
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result.split(',')[1];
-        if (!base64 || base64.length < 500) { if (btn) btn.textContent = '⏹'; return; }
-        fetch(API + '/api/transcribe?channel_id=' + activeView.id, {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ audio: base64 })
-        }).then(r => r.json()).then(d => {
-          if (d.text) console.log('[Whisper] Chunk', chunkCount, ':', d.text.substring(0, 80));
-          if (btn) btn.textContent = '⏹';
-        }).catch(() => { if (btn) btn.textContent = '⏹'; });
+    // Simple approach: stop/start recorder on interval for reliable chunks
+    let chunkNum = 0;
+    function startRecording() {
+      if (!isCapturing) return;
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+      captureRecorder = new MediaRecorder(recordStream, mimeType ? { mimeType } : {});
+      const chunks = [];
+      captureRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      captureRecorder.onstop = () => {
+        if (chunks.length === 0 || !isCapturing) return;
+        const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+        if (blob.size < 2000) return;
+        chunkNum++;
+        const b = document.getElementById('btn-capture');
+        if (b) b.textContent = '⏳';
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result.split(',')[1];
+          if (!base64) { if (b) b.textContent = '⏹'; return; }
+          fetch(API + '/api/transcribe?channel_id=' + activeView.id, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ audio: base64 })
+          }).then(r => r.json()).then(d => {
+            if (d.text) appendSystemMessage('✅ Chunk ' + chunkNum + ' transcrito');
+            if (b) b.textContent = '⏹';
+          }).catch(() => { if (b) b.textContent = '⏹'; });
+        };
+        reader.readAsDataURL(blob);
+        // Start next recording
+        if (isCapturing) setTimeout(startRecording, 500);
       };
-      reader.readAsDataURL(blob);
-    };
-
-    // Start continuous recording, use interval to request data
-    captureRecorder.start();
-    captureInterval = setInterval(() => {
-      if (captureRecorder && captureRecorder.state === 'recording') {
-        captureRecorder.requestData();
-      }
-    }, 20000);
-  } catch (err) {
-    if (err.name !== 'NotAllowedError') {
-      appendSystemMessage('⚠ Erro na captura: ' + err.message);
+      captureRecorder.start();
+      // Stop after 20s to create a chunk
+      setTimeout(() => {
+        if (captureRecorder && captureRecorder.state === 'recording') captureRecorder.stop();
+      }, 20000);
     }
+    startRecording();
+  } catch (err) {
+    appendSystemMessage('⚠ Erro: ' + err.message);
   }
 }
 
