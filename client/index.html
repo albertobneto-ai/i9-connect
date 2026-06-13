@@ -1204,7 +1204,9 @@ function updateCallUI() {
 
 // ═══ WHISPER AUDIO CAPTURE (system audio) ═══
 let captureStream = null;
+let captureMicStream = null;
 let captureRecorder = null;
+let captureAudioCtx = null;
 let isCapturing = false;
 
 async function startAudioCapture() {
@@ -1214,30 +1216,41 @@ async function startAudioCapture() {
     return;
   }
   try {
-    // Request tab/screen audio
+    // 1. Capture system/tab audio
     captureStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
-    // Stop video track (we only need audio)
     captureStream.getVideoTracks().forEach(t => t.stop());
-    const audioTracks = captureStream.getAudioTracks();
-    if (!audioTracks.length) {
+    const systemAudioTracks = captureStream.getAudioTracks();
+    if (!systemAudioTracks.length) {
       appendSystemMessage('⚠ Marque "Compartilhar áudio" ao selecionar a aba');
+      captureStream.getTracks().forEach(t => t.stop());
       return;
     }
-    const audioStream = new MediaStream(audioTracks);
+
+    // 2. Capture microphone
+    captureMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    // 3. Merge both streams using AudioContext
+    captureAudioCtx = new AudioContext();
+    const destination = captureAudioCtx.createMediaStreamDestination();
+    const systemSource = captureAudioCtx.createMediaStreamSource(new MediaStream(systemAudioTracks));
+    systemSource.connect(destination);
+    const micSource = captureAudioCtx.createMediaStreamSource(captureMicStream);
+    micSource.connect(destination);
+
+    const mergedStream = destination.stream;
+
     isCapturing = true;
     const btn = document.getElementById('btn-capture');
     btn.style.background = 'var(--red)';
     btn.style.color = '#fff';
     btn.style.borderColor = 'var(--red)';
-    btn.textContent = '⏹ Parar';
-    appendSystemMessage('🔊 Captura de áudio iniciada — Whisper transcreve a cada 15s');
+    btn.textContent = '⏹ Parar Captura';
+    appendSystemMessage('🔊 Captura ativa — computador + microfone → Whisper a cada 15s');
 
-    // Record in chunks
-    captureRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm;codecs=opus' });
-    const chunks = [];
+    // 4. Record merged stream in chunks
+    captureRecorder = new MediaRecorder(mergedStream, { mimeType: 'audio/webm;codecs=opus' });
     captureRecorder.ondataavailable = async (e) => {
       if (e.data.size > 0) {
-        // Convert to base64 and send to server
         const reader = new FileReader();
         reader.onloadend = async () => {
           const base64 = reader.result.split(',')[1];
@@ -1252,10 +1265,10 @@ async function startAudioCapture() {
         reader.readAsDataURL(e.data);
       }
     };
-    captureRecorder.start(15000); // chunk every 15s
+    captureRecorder.start(15000);
 
-    // Stop when track ends (user clicks stop sharing)
-    audioTracks[0].onended = () => stopAudioCapture();
+    // Stop when system audio track ends
+    systemAudioTracks[0].onended = () => stopAudioCapture();
   } catch (err) {
     if (err.name !== 'NotAllowedError') {
       appendSystemMessage('⚠ Erro na captura: ' + err.message);
@@ -1267,16 +1280,20 @@ function stopAudioCapture() {
   isCapturing = false;
   if (captureRecorder && captureRecorder.state !== 'inactive') captureRecorder.stop();
   if (captureStream) captureStream.getTracks().forEach(t => t.stop());
+  if (captureMicStream) captureMicStream.getTracks().forEach(t => t.stop());
+  if (captureAudioCtx) captureAudioCtx.close().catch(() => {});
   captureRecorder = null;
   captureStream = null;
+  captureMicStream = null;
+  captureAudioCtx = null;
   const btn = document.getElementById('btn-capture');
   if (btn) {
     btn.style.background = 'none';
     btn.style.color = 'var(--text3)';
     btn.style.borderColor = 'var(--border)';
-    btn.textContent = '🔊 Capturar';
+    btn.textContent = '🔊 Capturar Áudio';
   }
-  appendSystemMessage('🔊 Captura de áudio encerrada');
+  appendSystemMessage('🔊 Captura encerrada');
 }
 
 // ═══ PASTE TRANSCRIPT ═══
