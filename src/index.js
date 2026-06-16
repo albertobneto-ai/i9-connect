@@ -38,7 +38,7 @@ async function callAI(model, messages, maxTokens = 1500) {
       body: JSON.stringify({ model: anthropicModel, max_tokens: maxTokens, system: sysMsg, messages: userMsgs })
     });
     const data = await resp.json();
-    return data.content?.[0]?.text || data.error?.message || 'Sem resposta.';
+    return data.content?.[0]?.text || data.error?.message || 'No response.';
   }
   // Grok (xAI)
   if ((model.startsWith('xai/') || model.includes('grok')) && GROK_KEY) {
@@ -49,17 +49,17 @@ async function callAI(model, messages, maxTokens = 1500) {
       body: JSON.stringify({ model: grokModel, max_tokens: maxTokens, messages })
     });
     const data = await resp.json();
-    return data.choices?.[0]?.message?.content || 'Sem resposta.';
+    return data.choices?.[0]?.message?.content || 'No response.';
   }
   // OpenRouter (free + paid)
-  if (!OPENROUTER_KEY) return 'Bot não configurado. Defina OPENROUTER_KEY.';
+  if (!OPENROUTER_KEY) return 'Bot not configured. Set OPENROUTER_KEY.';
   const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENROUTER_KEY}` },
     body: JSON.stringify({ model, max_tokens: maxTokens, messages })
   });
   const data = await resp.json();
-  return data.choices?.[0]?.message?.content || 'Sem resposta do modelo.';
+  return data.choices?.[0]?.message?.content || 'No response from model.';
 }
 
 // ═══ POSTGRES ═══
@@ -154,10 +154,10 @@ async function initDB() {
     const { rows } = await client.query("SELECT COUNT(*) FROM connect_channels");
     if (parseInt(rows[0].count) === 0) {
       await client.query(`INSERT INTO connect_channels (name, description, type) VALUES
-        ('geral', 'Canal geral do projeto', 'channel'),
-        ('arquitetura', 'Discussões de arquitetura Salesforce', 'channel'),
-        ('deploys', 'Notificações de deploys e releases', 'channel'),
-        ('bot-ia', 'Canal com assistente IA integrado', 'channel')
+        ('geral', 'General project channel', 'channel'),
+        ('arquitetura', 'Salesforce architecture discussions', 'channel'),
+        ('deploys', 'Deploy and release notifications', 'channel'),
+        ('bot-ia', 'Channel with integrated AI assistant', 'channel')
       `);
     }
     console.log('[DB] Schema initialized');
@@ -325,7 +325,7 @@ app.post('/api/channels/:id/clear', authMiddleware, async (req, res) => {
     let history = await pool.query("SELECT id FROM connect_channels WHERE name = 'chat-history' LIMIT 1");
     if (!history.rows.length) {
       history = await pool.query(
-        "INSERT INTO connect_channels (name, description, type) VALUES ('chat-history', 'Histórico de mensagens arquivadas', 'channel') RETURNING id"
+        "INSERT INTO connect_channels (name, description, type) VALUES ('chat-history', 'Archived message history', 'channel') RETURNING id"
       );
     }
     const historyId = history.rows[0].id;
@@ -343,7 +343,7 @@ app.post('/api/channels/:id/clear', authMiddleware, async (req, res) => {
     const botId = sysUser.rows.length ? sysUser.rows[0].id : req.user.id;
     await pool.query(
       'INSERT INTO connect_messages (channel_id, user_id, content, type) VALUES ($1,$2,$3,$4)',
-      [historyId, botId, `━━━ Histórico #${srcName} — arquivado em ${timestamp} ━━━`, 'system']
+      [historyId, botId, `━━━ History #${srcName} — archived ${timestamp} ━━━`, 'system']
     );
     // Copy each message
     for (const m of msgs.rows) {
@@ -489,10 +489,12 @@ app.post('/api/bot/ask', authMiddleware, async (req, res) => {
   try {
     const { question, channel_id, model } = req.body;
     const useModel = model || BOT_MODEL;
-    const sysPrompt = `Você é o i9 Bot, assistente especialista Salesforce integrado ao i9 Connect.
-Responda de forma detalhada e técnica em português do Brasil.
-Conhecimento: Sales Cloud, Service Cloud, Data Cloud, Revenue Cloud, Agentforce, MuleSoft, Experience Cloud.
-Use ** para destaques, listas numeradas para procedimentos. Seja completo e útil.`;
+    const sysPrompt = `You are i9 Bot, a Salesforce specialist assistant integrated into i9 Connect.
+
+LANGUAGE RULE: Detect the language of the user's message. If they write in English, respond entirely in English. If they write in Portuguese, respond entirely in Brazilian Portuguese. Match their language exactly.
+
+Expertise: Sales Cloud, Service Cloud, Data Cloud, Revenue Cloud, Agentforce, MuleSoft, Experience Cloud.
+Use ** for highlights, numbered lists for procedures. Be thorough and helpful.`;
     const answer = await callAI(useModel, [{ role: 'system', content: sysPrompt }, { role: 'user', content: question }], 1500);
     // Save bot response as message in channel
     if (channel_id) {
@@ -708,22 +710,22 @@ async function autoSuggest(channelId, content) {
       });
 
     const messages = [
-      { role: 'system', content: `Você é o i9 Bot, um assistente especialista Salesforce integrado a um chat de equipe.
+      { role: 'system', content: `You are i9 Bot, a Salesforce specialist assistant integrated into a team chat.
 
-REGRAS:
-- Responda em português do Brasil, de forma técnica e DETALHADA
-- Quando a pergunta pedir um passo a passo, forneça etapas numeradas com detalhes de cada clique/configuração
-- Quando for uma dúvida conceitual, explique com clareza usando exemplos práticos
-- Considere o CONTEXTO da conversa (mensagens anteriores) para entender continuações e referências
-- Se a mensagem atual é uma continuação de um assunto anterior, responda considerando todo o contexto
-- Se NÃO for relacionado a Salesforce ou tecnologia (saudação, conversa casual), responda exatamente: SKIP
-- Use formatação com ** para destaques e listas numeradas para procedimentos
-- Seja completo: 4-8 parágrafos para explicações, passos detalhados para procedimentos` },
+RULES:
+- LANGUAGE: Detect the language of the latest user message. If it's in English, respond entirely in English. If it's in Portuguese, respond entirely in Brazilian Portuguese. Match their language exactly.
+- When the question asks for a step-by-step, provide numbered steps with details of each click/configuration
+- When it's a conceptual question, explain clearly using practical examples
+- Consider the CONTEXT of the conversation (previous messages) to understand continuations and references
+- If the current message is a continuation of a previous topic, respond considering the full context
+- If NOT related to Salesforce or technology (greeting, casual chat), respond exactly: SKIP
+- Use ** for highlights and numbered lists for procedures
+- Be thorough: 4-8 paragraphs for explanations, detailed steps for procedures` },
       ...contextMessages
     ];
 
     const answer = await callAI(BOT_MODEL, messages, 1500);
-    if (!answer || answer === 'SKIP' || answer.startsWith('SKIP') || answer === 'Sem resposta do modelo.') return;
+    if (!answer || answer === 'SKIP' || answer.startsWith('SKIP') || answer === 'No response from model.') return;
 
     // Get or create bot user
     let sysUser = await pool.query("SELECT id FROM connect_users WHERE username = 'everi9-bot' LIMIT 1");
