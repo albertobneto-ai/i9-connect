@@ -1234,106 +1234,68 @@ function toggleCamera() {
 }
 
 // ═══ SPEECH-TO-TEXT TRANSCRIPTION ═══
-// ═══ TRANSCRIPTION — Debounce 3s ═══
-let txBuffer = '';
-let txTimer = null;
-let capBuffer = '';
-let capTimer = null;
-const SPEECH_PAUSE_MS = 3000;
+// ═══ TRANSCRIPTION (TechEnglish pattern) ═══
+let _trRecent = new Set();
 
-function flushBuffer(buf, prefix) {
-  const text = buf.trim();
-  if (text.length > 1 && activeView?.type === 'channel') {
-    socket.emit('message:send', { channel_id: activeView.id, content: prefix + text, type: 'text' });
-  }
-}
-
-function buildRecognition() {
+function buildSR() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return null;
   const r = new SR();
-  r.continuous = true;
-  r.interimResults = true;
   r.lang = currentLang === 'en' ? 'en-US' : 'pt-BR';
-  r.maxAlternatives = 1;
+  r.interimResults = true;
+  r.continuous = true;
   return r;
 }
 
-// ── Toggle Transcription (💬 button — in-call or standalone) ──
 function toggleTranscription() {
-  if (isTranscribing) { stopTranscription(); } else { startTranscription(); }
+  if (isTranscribing) stopTranscription(); else startTranscription();
 }
 
 function startTranscription() {
-  recognition = buildRecognition();
+  recognition = buildSR();
   if (!recognition) { appendSystemMessage(t('transcription_unsupported')); return; }
+  isTranscribing = true;
+  _trRecent = new Set();
 
-  txBuffer = '';
-  clearTimeout(txTimer); txTimer = null;
-
-  recognition.onresult = (event) => {
-    let full = '';
-    for (let i = 0; i < event.results.length; i++) { full += event.results[i][0].transcript; }
-    txBuffer = full.trim();
-    clearTimeout(txTimer);
-    txTimer = setTimeout(() => {
-      flushBuffer(txBuffer, '🎤 ');
-      txBuffer = '';
-    }, SPEECH_PAUSE_MS);
+  recognition.onresult = (e) => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        const txt = e.results[i][0].transcript.trim();
+        if (txt.length > 2 && activeView?.type === 'channel') {
+          const key = txt.substring(0, 80);
+          if (!_trRecent.has(key)) {
+            _trRecent.add(key);
+            setTimeout(() => _trRecent.delete(key), 8000);
+            socket.emit('message:send', { channel_id: activeView.id, content: '🎤 ' + txt, type: 'text' });
+          }
+        }
+      }
+    }
   };
 
-  recognition.onerror = (event) => {
-    if (event.error === 'no-speech' || event.error === 'aborted') return;
-    console.error('[TX] Error:', event.error);
-    if (event.error === 'not-allowed') { appendSystemMessage(t('perm_mic_denied')); stopTranscription(); }
+  recognition.onerror = (e) => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    console.error('[TX]', e.error);
+    if (e.error === 'not-allowed') { appendSystemMessage(t('perm_mic_denied')); stopTranscription(); }
   };
 
-  recognition.onend = function txOnEnd() {
-    if (!isTranscribing) return;
-    if (txBuffer.trim().length > 1) { flushBuffer(txBuffer, '🎤 '); txBuffer = ''; }
-    clearTimeout(txTimer); txTimer = null;
-    setTimeout(() => {
-      if (!isTranscribing) return;
-      recognition = buildRecognition();
-      if (!recognition) return;
-      txBuffer = '';
-      recognition.onresult = (ev) => {
-        let full = '';
-        for (let i = 0; i < ev.results.length; i++) { full += ev.results[i][0].transcript; }
-        txBuffer = full.trim();
-        clearTimeout(txTimer);
-        txTimer = setTimeout(() => { flushBuffer(txBuffer, '🎤 '); txBuffer = ''; }, SPEECH_PAUSE_MS);
-      };
-      recognition.onerror = (ev) => { if (ev.error !== 'no-speech' && ev.error !== 'aborted') console.error('[TX]', ev.error); };
-      recognition.onend = txOnEnd;
-      try { recognition.start(); } catch (e) { console.log('[TX] Restart failed:', e.message); }
-    }, 200);
-  };
+  recognition.onend = () => { if (isTranscribing) try { recognition.start(); } catch (e) {} };
 
-  try {
-    recognition.start();
-    isTranscribing = true;
-    const btn = document.getElementById('btn-transcribe');
-    btn.style.background = '#4a9eff';
-    btn.title = t('transcription_active_title');
-    appendSystemMessage(t('transcription_activated'));
-  } catch (err) {
-    appendSystemMessage(t('error_transcription') + ': ' + err.message);
-  }
+  recognition.start();
+  const btn = document.getElementById('btn-transcribe');
+  btn.style.background = '#4a9eff';
+  btn.title = t('transcription_active_title');
+  appendSystemMessage(t('transcription_activated'));
 }
 
 function stopTranscription() {
   isTranscribing = false;
-  if (txBuffer.trim().length > 1) { flushBuffer(txBuffer, '🎤 '); }
-  txBuffer = ''; clearTimeout(txTimer); txTimer = null;
-  if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
+  if (recognition) { try { recognition.abort(); } catch {} recognition = null; }
   const btn = document.getElementById('btn-transcribe');
   if (btn) { btn.style.background = 'var(--bg4)'; btn.title = t('transcribe_audio'); }
 }
 
-function updateVideoGrid() {
-  // Flex layout handles positioning automatically
-}
+function updateVideoGrid() {}
 
 function updateCallDuration() {
   if (!callStartTime) return;
@@ -1346,19 +1308,15 @@ function updateCallDuration() {
 function updateCallUI() {
   const btn = document.getElementById('call-btn');
   if (inCall) {
-    btn.classList.add('active-call');
-    btn.style.background = '#e74c3c';
-    btn.style.borderColor = '#c0392b';
+    btn.classList.add('active-call'); btn.style.background = '#e74c3c'; btn.style.borderColor = '#c0392b';
     btn.innerHTML = `📹 ${t('in_call')}`;
   } else {
-    btn.classList.remove('active-call');
-    btn.style.background = '#2ecc71';
-    btn.style.borderColor = '#27ae60';
+    btn.classList.remove('active-call'); btn.style.background = '#2ecc71'; btn.style.borderColor = '#27ae60';
     btn.innerHTML = `📹 ${t('call_btn')}`;
   }
 }
 
-// ═══ AUDIO CAPTURE (🔊 button — standalone mic capture) ═══
+// ═══ AUDIO CAPTURE (🔊 button) ═══
 let captureStream = null;
 let captureMicStream = null;
 let captureRecorder = null;
@@ -1366,67 +1324,50 @@ let captureAudioCtx = null;
 let captureInterval = null;
 let isCapturing = false;
 let captureRecognition = null;
+let _capRecent = new Set();
 
 function startAudioCapture() {
   if (isCapturing) { stopAudioCapture(); return; }
   if (!activeView || activeView.type !== 'channel') { appendSystemMessage(t('select_channel_first')); return; }
 
-  captureRecognition = buildRecognition();
+  captureRecognition = buildSR();
   if (!captureRecognition) { appendSystemMessage(t('transcription_unsupported')); return; }
+  isCapturing = true;
+  _capRecent = new Set();
 
-  capBuffer = '';
-  clearTimeout(capTimer); capTimer = null;
-
-  function capOnResult(event) {
-    let full = '';
-    for (let i = 0; i < event.results.length; i++) { full += event.results[i][0].transcript; }
-    capBuffer = full.trim();
-    clearTimeout(capTimer);
-    capTimer = setTimeout(() => { flushBuffer(capBuffer, '🎤 '); capBuffer = ''; }, SPEECH_PAUSE_MS);
-  }
-
-  function capOnEnd() {
-    if (!isCapturing) return;
-    if (capBuffer.trim().length > 1) { flushBuffer(capBuffer, '🎤 '); capBuffer = ''; }
-    clearTimeout(capTimer); capTimer = null;
-    setTimeout(() => {
-      if (!isCapturing) return;
-      captureRecognition = buildRecognition();
-      if (!captureRecognition) return;
-      capBuffer = '';
-      captureRecognition.onresult = capOnResult;
-      captureRecognition.onerror = (ev) => { if (ev.error !== 'no-speech' && ev.error !== 'aborted') appendSystemMessage(t('transcription_error') + ev.error); };
-      captureRecognition.onend = capOnEnd;
-      try { captureRecognition.start(); } catch (e) { console.log('[Cap] Restart failed:', e.message); }
-    }, 200);
-  }
-
-  captureRecognition.onresult = capOnResult;
-  captureRecognition.onerror = (event) => {
-    if (event.error === 'no-speech' || event.error === 'aborted') return;
-    appendSystemMessage(t('transcription_error') + event.error);
+  captureRecognition.onresult = (e) => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        const txt = e.results[i][0].transcript.trim();
+        if (txt.length > 2 && activeView?.type === 'channel') {
+          const key = txt.substring(0, 80);
+          if (!_capRecent.has(key)) {
+            _capRecent.add(key);
+            setTimeout(() => _capRecent.delete(key), 8000);
+            socket.emit('message:send', { channel_id: activeView.id, content: '🎤 ' + txt, type: 'text' });
+          }
+        }
+      }
+    }
   };
-  captureRecognition.onend = capOnEnd;
 
-  try {
-    captureRecognition.start();
-    isCapturing = true;
-    const btn = document.getElementById('btn-capture');
-    btn.style.background = 'var(--red)';
-    btn.style.color = '#fff';
-    btn.style.borderColor = 'var(--red)';
-    btn.textContent = '⏹';
-    appendSystemMessage(t('capture_active'));
-  } catch (err) {
-    appendSystemMessage('⚠ ' + t('error_label') + ': ' + err.message);
-  }
+  captureRecognition.onerror = (e) => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    appendSystemMessage(t('transcription_error') + e.error);
+  };
+
+  captureRecognition.onend = () => { if (isCapturing) try { captureRecognition.start(); } catch (e) {} };
+
+  captureRecognition.start();
+  const btn = document.getElementById('btn-capture');
+  btn.style.background = 'var(--red)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--red)';
+  btn.textContent = '⏹';
+  appendSystemMessage(t('capture_active'));
 }
 
 function stopAudioCapture() {
   isCapturing = false;
-  if (capBuffer.trim().length > 1) { flushBuffer(capBuffer, '🎤 '); }
-  capBuffer = ''; clearTimeout(capTimer); capTimer = null;
-  if (captureRecognition) { try { captureRecognition.stop(); } catch {} captureRecognition = null; }
+  if (captureRecognition) { try { captureRecognition.abort(); } catch {} captureRecognition = null; }
   const btn = document.getElementById('btn-capture');
   if (btn) { btn.style.background = 'none'; btn.style.color = 'var(--text3)'; btn.style.borderColor = 'var(--border)'; btn.textContent = '🔊'; }
   appendSystemMessage(t('capture_ended'));
