@@ -252,13 +252,13 @@ input,button,textarea,select{font-family:inherit;outline:none}
 <div id="login-screen">
   <div class="login-box">
     <div class="login-logo">i9 Connect</div>
-    <div class="login-sub">Comunicação integrada ao Ever i9</div>
+    <div class="login-sub" data-i18n="subtitle">Comunicação integrada ao Ever i9</div>
     <div class="login-error" id="login-error"></div>
-    <input class="login-input" id="auth-display" placeholder="Nome de exibição" style="display:none">
-    <input class="login-input" id="auth-user" placeholder="Usuário">
-    <input class="login-input" id="auth-pass" placeholder="Senha" type="password">
-    <button class="login-btn" id="auth-btn" onclick="doAuth()">Entrar</button>
-    <button class="login-toggle" id="auth-toggle" onclick="toggleAuth()">Não tem conta? Criar uma</button>
+    <input class="login-input" id="auth-display" placeholder="Nome de exibição" data-i18n-placeholder="auth_display_name" style="display:none">
+    <input class="login-input" id="auth-user" placeholder="Usuário" data-i18n-placeholder="auth_username">
+    <input class="login-input" id="auth-pass" placeholder="Senha" data-i18n-placeholder="auth_password" type="password">
+    <button class="login-btn" id="auth-btn" onclick="doAuth()" data-i18n="auth_login">Entrar</button>
+    <button class="login-toggle" id="auth-toggle" onclick="toggleAuth()" data-i18n="auth_toggle_register">Não tem conta? Criar uma</button>
   </div>
 </div>
 
@@ -271,15 +271,15 @@ input,button,textarea,select{font-family:inherit;outline:none}
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-brand">i9 <span>Connect</span></div>
-      <button onclick="toggleNotifPanel()" title="Notificações" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;position:relative" id="notif-btn">
+      <button onclick="toggleNotifPanel()" title="Notificações" data-i18n-title="notifications" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;position:relative" id="notif-btn">
         🔔 <span id="notif-count" style="display:none;position:absolute;top:-4px;right:-6px;background:var(--red);color:#fff;font-size:8px;padding:1px 4px;border-radius:8px;font-weight:700"></span>
       </button>
     </div>
 
-    <div class="sidebar-section">Canais <button onclick="showCreateChannel()" title="Criar canal">+</button></div>
+    <div class="sidebar-section"><span data-i18n="channels">Canais</span> <button onclick="showCreateChannel()" title="Criar canal" data-i18n-title="create_channel_tooltip">+</button></div>
     <div class="channel-list" id="channel-list"></div>
 
-    <div class="sidebar-section">Mensagens Diretas <button onclick="showCreateDM()" title="Nova DM">+</button></div>
+    <div class="sidebar-section"><span data-i18n="direct_messages">Mensagens Diretas</span> <button onclick="showCreateDM()" title="Nova DM" data-i18n-title="new_dm_tooltip">+</button></div>
     <div class="channel-list" id="dm-list" style="max-height:180px"></div>
 
     <div class="sidebar-section">Online</div>
@@ -300,13 +300,14 @@ input,button,textarea,select{font-family:inherit;outline:none}
       <div class="self-info">
         <div class="self-name" id="self-name">—</div>
         <select class="status-select" id="self-status" onchange="setStatus(this.value)">
-          <option value="online">Online</option>
-          <option value="away">Ausente</option>
-          <option value="busy">Ocupado</option>
+          <option value="online" data-i18n="status_online">Online</option>
+          <option value="away" data-i18n="status_away">Ausente</option>
+          <option value="busy" data-i18n="status_busy">Ocupado</option>
         </select>
       </div>
       <div class="self-actions">
-        <button onclick="logout()" title="Sair">⏻</button>
+        <button onclick="logout()" title="Sair" data-i18n-title="status_logout">⏻</button>
+        <button onclick="toggleLang()" id="lang-toggle" title="Switch to English" style="background:none;border:1px solid var(--border1);color:var(--text2);cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;font-weight:600;min-width:32px">EN</button>
       </div>
     </div>
   </div>
@@ -318,17 +319,17 @@ input,button,textarea,select{font-family:inherit;outline:none}
         <button class="hamburger" onclick="toggleSidebar()" title="Menu">☰</button>
         <span class="chat-header-icon" id="chat-icon">#</span>
         <div>
-          <div class="chat-header-name" id="chat-name">Selecione um canal</div>
+          <div class="chat-header-name" id="chat-name" data-i18n="select_channel">Selecione um canal</div>
           <div class="chat-header-desc" id="chat-desc"></div>
         </div>
       </div>
       <div class="chat-header-actions">
-        <button id="call-btn" onclick="toggleCall()" title="Chamada de vídeo" style="background:#2ecc71;border-color:#27ae60;font-weight:600">📹 Chamada</button>
-        <button onclick="startAudioCapture()" id="btn-capture" title="Capturar áudio (Whisper)">🔊</button>
-        <button onclick="showPasteTranscript()" title="Colar transcript">📋</button>
-        <button onclick="toggleRightPanel('members')" title="Membros">👥</button>
-        <button onclick="toggleRightPanel('notifications')" title="Notificações">🔔</button>
-        <button onclick="clearChat()" title="Limpar chat" style="font-size:14px">🗑️</button>
+        <button id="call-btn" onclick="toggleCall()" title="Chamada de vídeo" data-i18n-title="video_call" style="background:#2ecc71;border-color:#27ae60;font-weight:600">📹 Chamada</button>
+        <button onclick="startAudioCapture()" id="btn-capture" title="Capturar áudio (Whisper)" data-i18n-title="capture_audio">🔊</button>
+        <button onclick="showPasteTranscript()" title="Colar transcript" data-i18n-title="paste_transcript">📋</button>
+        <button onclick="toggleRightPanel('members')" title="Membros" data-i18n-title="members">👥</button>
+        <button onclick="toggleRightPanel('notifications')" title="Notificações" data-i18n-title="notifications">🔔</button>
+        <button onclick="clearChat()" title="Limpar chat" data-i18n-title="clear_chat" style="font-size:14px">🗑️</button>
       </div>
     </div>
 
@@ -337,20 +338,20 @@ input,button,textarea,select{font-family:inherit;outline:none}
       <div class="call-panel-header">
         <div class="call-info">
           <div class="call-dot"></div>
-          <span class="call-label">Chamada em andamento</span>
+          <span class="call-label" data-i18n="call_ongoing">Chamada em andamento</span>
           <span class="call-duration" id="call-duration">00:00</span>
         </div>
       </div>
       <div class="call-panel-videos" id="video-grid">
         <div class="video-cell local-cell" id="local-video-cell">
           <video id="local-video" autoplay muted playsinline></video>
-          <div class="video-label">Você</div>
+          <div class="video-label" data-i18n="you_label">Você</div>
         </div>
       </div>
       <div class="call-panel-controls">
-        <button class="ctl-btn mic" id="btn-mic" onclick="toggleMute()" title="Microfone">🎙</button>
-        <button class="ctl-btn cam" id="btn-cam" onclick="toggleCamera()" title="Câmera">📷</button>
-        <button class="ctl-btn" id="btn-transcribe" onclick="toggleTranscription()" title="Transcrever áudio para texto" style="background:var(--bg4);color:#fff;font-size:13px">💬</button>
+        <button class="ctl-btn mic" id="btn-mic" onclick="toggleMute()" title="Microfone" data-i18n-title="microphone">🎙</button>
+        <button class="ctl-btn cam" id="btn-cam" onclick="toggleCamera()" title="Câmera" data-i18n-title="camera">📷</button>
+        <button class="ctl-btn" id="btn-transcribe" onclick="toggleTranscription()" title="Transcrever áudio para texto" data-i18n-title="transcribe_audio" style="background:var(--bg4);color:#fff;font-size:13px">💬</button>
         <button class="ctl-btn hangup" onclick="leaveCall()" title="Encerrar">📞</button>
       </div>
     </div>
@@ -358,7 +359,7 @@ input,button,textarea,select{font-family:inherit;outline:none}
     <div class="messages-container" id="messages-container">
       <div class="empty-state">
         <div class="icon">💬</div>
-        <p>Selecione um canal para começar</p>
+        <p data-i18n="select_channel_start">Selecione um canal para começar</p>
       </div>
     </div>
 
@@ -366,12 +367,12 @@ input,button,textarea,select{font-family:inherit;outline:none}
 
     <div class="chat-input-area">
       <div class="chat-input-row">
-        <textarea class="chat-input" id="msg-input" placeholder="Digite uma mensagem..." rows="1"
+        <textarea class="chat-input" id="msg-input" placeholder="Digite uma mensagem..." data-i18n-placeholder="msg_placeholder" rows="1"
           onkeydown="handleInputKey(event)" oninput="handleTyping()"></textarea>
         <button class="chat-send-btn" onclick="sendMessage()" id="send-btn" disabled>➤</button>
       </div>
       <div class="bot-hint" id="bot-hint" style="display:block">
-        🤖 IA detecta Salesforce · <strong>@bot</strong> · <strong>@orgsf</strong>
+        🤖 <span data-i18n="ai_detects">IA detecta Salesforce</span> · <strong>@bot</strong> · <strong>@orgsf</strong>
       </div>
       <div class="model-selector">
         <button class="model-btn" id="model-btn" onclick="toggleModelDropdown()">
@@ -386,7 +387,7 @@ input,button,textarea,select{font-family:inherit;outline:none}
   <!-- Right Panel -->
   <div class="right-panel" id="right-panel">
     <div class="panel-header">
-      <span id="panel-title">Membros</span>
+      <span id="panel-title" data-i18n="members">Membros</span>
       <button onclick="closeRightPanel()">✕</button>
     </div>
     <div class="panel-content" id="panel-content"></div>
@@ -396,20 +397,20 @@ input,button,textarea,select{font-family:inherit;outline:none}
 <!-- Create Channel Modal -->
 <div class="modal-overlay" id="modal-channel">
   <div class="modal-box">
-    <h3>Criar Canal</h3>
-    <input class="login-input" id="new-ch-name" placeholder="Nome do canal (ex: vendas-b2b)">
-    <input class="login-input" id="new-ch-desc" placeholder="Descrição (opcional)">
-    <button class="login-btn" onclick="createChannel()">Criar</button>
-    <button class="login-toggle" onclick="closeModal('modal-channel')">Cancelar</button>
+    <h3 data-i18n="create_channel_header">Criar Canal</h3>
+    <input class="login-input" id="new-ch-name" placeholder="Nome do canal (ex: vendas-b2b)" data-i18n-placeholder="channel_name_placeholder">
+    <input class="login-input" id="new-ch-desc" placeholder="Descrição (opcional)" data-i18n-placeholder="description_optional">
+    <button class="login-btn" onclick="createChannel()" data-i18n="create_btn">Criar</button>
+    <button class="login-toggle" onclick="closeModal('modal-channel')" data-i18n="cancel_btn">Cancelar</button>
   </div>
 </div>
 
 <!-- Create DM Modal -->
 <div class="modal-overlay" id="modal-dm">
   <div class="modal-box">
-    <h3>Nova Mensagem Direta</h3>
+    <h3 data-i18n="new_dm_header">Nova Mensagem Direta</h3>
     <div id="dm-user-list" style="max-height:260px;overflow-y:auto"></div>
-    <button class="login-toggle" onclick="closeModal('modal-dm')" style="margin-top:10px">Cancelar</button>
+    <button class="login-toggle" onclick="closeModal('modal-dm')" data-i18n="cancel_btn" style="margin-top:10px">Cancelar</button>
   </div>
 </div>
 
@@ -443,12 +444,148 @@ const ICE_SERVERS = [
 
 const API = '';
 
+// ═══ i18n SYSTEM ═══
+const i18n = {
+  'pt-BR': {
+    auth_username: 'Usuário', auth_password: 'Senha', auth_display_name: 'Nome de exibição',
+    auth_login: 'Entrar', auth_register: 'Criar Conta',
+    auth_toggle_register: 'Não tem conta? Criar uma', auth_toggle_login: 'Já tem conta? Entrar',
+    auth_fill_fields: 'Preencha todos os campos', auth_fill_display: 'Informe o nome de exibição',
+    auth_error: 'Erro de conexão',
+    channels: 'Canais', direct_messages: 'Mensagens Diretas',
+    create_channel_tooltip: 'Criar canal', new_dm_tooltip: 'Nova DM',
+    select_channel: 'Selecione um canal', select_channel_start: 'Selecione um canal para começar',
+    msg_placeholder: 'Digite uma mensagem...', dm_label: 'Mensagem direta',
+    no_messages: 'Nenhuma mensagem ainda. Comece a conversa!',
+    clear_chat: 'Limpar chat',
+    clear_confirm: 'Limpar todas as mensagens de',
+    messages_moved: 'mensagens movidas para #chat-history',
+    chat_cleaned: 'Chat limpo \u2014 mensagens movidas para #chat-history',
+    video_call: 'Chamada de vídeo', call_btn: 'Chamada', in_call: 'Na chamada',
+    call_ongoing: 'Chamada em andamento', end_call: 'Encerrar',
+    microphone: 'Microfone', camera: 'Câmera',
+    call_started: 'iniciou uma chamada de vídeo', call_joined: 'entrou na chamada',
+    call_left: 'saiu da chamada', call_ended: 'Chamada encerrada',
+    select_channel_first: t('select_channel_first'), participant: 'Participante',
+    members: 'Membros', notifications: 'Notificações',
+    no_notifications: 'Sem notificações', mark_all_read: 'Marcar todas como lidas',
+    nobody_online: 'Ninguém online', no_other_users: 'Nenhum outro usuário cadastrado',
+    online_label: 'ONLINE', offline_label: 'OFFLINE',
+    create_channel_header: 'Criar Canal',
+    channel_name_placeholder: 'Nome do canal (ex: vendas-b2b)',
+    description_optional: 'Descrição (opcional)',
+    create_btn: 'Criar', cancel_btn: 'Cancelar',
+    new_dm_header: 'Nova Mensagem Direta',
+    status_online: 'Online', status_away: 'Ausente', status_busy: 'Ocupado', status_logout: 'Sair',
+    system_label: 'Sistema', bot_detected: t('bot_detected'),
+    ai_detects: 'IA detecta Salesforce', select_model: t('select_model'), you_label: t('you_label'),
+    paste_transcript: 'Colar transcript',
+    paste_area_placeholder: 'Cole aqui o transcript da reunião do Teams...',
+    send_to_agent: 'Enviar para Agent',
+    capture_audio: 'Capturar áudio (Whisper)', transcribe_audio: 'Transcrever áudio para texto',
+    org_salesforce: 'Org Salesforce', error_label: 'Erro',
+    subtitle: 'Comunicação integrada ao Ever i9',
+    is_typing: 'está digitando...', error_transcription: '⚠ Erro ao iniciar transcrição',
+    language: 'Idioma',
+    perm_camera: t('perm_camera'),
+    transcription_unsupported: t('transcription_unsupported'),
+    perm_mic_denied: t('perm_mic_denied'),
+    transcription_active_title: 'Transcrição ativa — clique para desativar',
+    transcription_activated: t('transcription_activated'),
+    transcription_error: t('transcription_error'),
+    capture_active: t('capture_active'),
+    capture_ended: t('capture_ended'),
+    meeting_transcript: '📋 Transcript de reunião:'
+  },
+  'en': {
+    auth_username: 'Username', auth_password: 'Password', auth_display_name: 'Display Name',
+    auth_login: 'Sign In', auth_register: 'Create Account',
+    auth_toggle_register: "Don't have an account? Create one", auth_toggle_login: 'Already have an account? Sign in',
+    auth_fill_fields: 'Please fill in all fields', auth_fill_display: 'Please enter a display name',
+    auth_error: 'Connection error',
+    channels: 'Channels', direct_messages: 'Direct Messages',
+    create_channel_tooltip: 'Create channel', new_dm_tooltip: 'New DM',
+    select_channel: 'Select a channel', select_channel_start: 'Select a channel to get started',
+    msg_placeholder: 'Type a message...', dm_label: 'Direct message',
+    no_messages: 'No messages yet. Start the conversation!',
+    clear_chat: 'Clear chat',
+    clear_confirm: 'Clear all messages from',
+    messages_moved: 'messages moved to #chat-history',
+    chat_cleaned: 'Chat cleared \u2014 messages moved to #chat-history',
+    video_call: 'Video call', call_btn: 'Call', in_call: 'In call',
+    call_ongoing: 'Call in progress', end_call: 'End',
+    microphone: 'Microphone', camera: 'Camera',
+    call_started: 'started a video call', call_joined: 'joined the call',
+    call_left: 'left the call', call_ended: 'Call ended',
+    select_channel_first: '⚠ Select a channel first', participant: 'Participant',
+    members: 'Members', notifications: 'Notifications',
+    no_notifications: 'No notifications', mark_all_read: 'Mark all as read',
+    nobody_online: 'Nobody online', no_other_users: 'No other users registered',
+    online_label: 'ONLINE', offline_label: 'OFFLINE',
+    create_channel_header: 'Create Channel',
+    channel_name_placeholder: 'Channel name (e.g., sales-b2b)',
+    description_optional: 'Description (optional)',
+    create_btn: 'Create', cancel_btn: 'Cancel',
+    new_dm_header: 'New Direct Message',
+    status_online: 'Online', status_away: 'Away', status_busy: 'Busy', status_logout: 'Sign Out',
+    system_label: 'System', bot_detected: 'i9 Bot detected a Salesforce topic',
+    ai_detects: 'AI detects Salesforce', select_model: 'Select AI Model', you_label: 'You',
+    paste_transcript: 'Paste transcript',
+    paste_area_placeholder: 'Paste the Teams meeting transcript here...',
+    send_to_agent: 'Send to Agent',
+    capture_audio: 'Capture audio (Whisper)', transcribe_audio: 'Transcribe audio to text',
+    org_salesforce: 'Salesforce Org', error_label: 'Error',
+    subtitle: 'Integrated communication for Ever i9',
+    is_typing: 'is typing...', error_transcription: '⚠ Error starting transcription',
+    language: 'Language',
+    perm_camera: '⚠ Camera/microphone permission denied. Check your browser permissions.',
+    transcription_unsupported: '⚠ Transcription not supported in this browser. Use Chrome or Edge.',
+    perm_mic_denied: '⚠ Microphone permission denied for transcription.',
+    transcription_active_title: 'Transcription active — click to deactivate',
+    transcription_activated: '💬 Transcription activated — your speech will be transcribed to chat',
+    transcription_error: '⚠ Transcription error: ',
+    capture_active: '🎤 Transcription active — speech is transcribed to chat in real time',
+    capture_ended: '🎤 Transcription ended',
+    meeting_transcript: '📋 Meeting transcript:'
+  }
+};
+
+let currentLang = localStorage.getItem('i9c_lang') || 'pt-BR';
+
+function t(key) { return (i18n[currentLang] && i18n[currentLang][key]) || (i18n['pt-BR'][key]) || key; }
+
+function setLang(lang) {
+  currentLang = lang;
+  localStorage.setItem('i9c_lang', lang);
+  applyI18n();
+}
+
+function getLocale() { return currentLang === 'en' ? 'en-US' : 'pt-BR'; }
+
+function applyI18n() {
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = t(el.dataset.i18nTitle); });
+  // Update language toggle button
+  const langBtn = document.getElementById('lang-toggle');
+  if (langBtn) langBtn.title = currentLang === 'en' ? 'Mudar para Português' : 'Switch to English';
+}
+
+function toggleLang() {
+  const newLang = currentLang === 'pt-BR' ? 'en' : 'pt-BR';
+  setLang(newLang);
+  const btn = document.getElementById('lang-toggle');
+  if (btn) btn.textContent = newLang === 'en' ? 'PT' : 'EN';
+}
+
+
+
 // ═══ AUTH ═══
 function toggleAuth() {
   isRegistering = !isRegistering;
   document.getElementById('auth-display').style.display = isRegistering ? 'block' : 'none';
-  document.getElementById('auth-btn').textContent = isRegistering ? 'Criar Conta' : 'Entrar';
-  document.getElementById('auth-toggle').textContent = isRegistering ? 'Já tem conta? Entrar' : 'Não tem conta? Criar uma';
+  document.getElementById('auth-btn').textContent = isRegistering ? t('auth_register') : t('auth_login');
+  document.getElementById('auth-toggle').textContent = isRegistering ? t('auth_toggle_login') : t('auth_toggle_register');
 }
 
 async function doAuth() {
@@ -457,7 +594,7 @@ async function doAuth() {
   const display_name = document.getElementById('auth-display').value.trim();
   const errEl = document.getElementById('login-error');
   if (!username || !password) { errEl.textContent = 'Preencha todos os campos'; return; }
-  if (isRegistering && !display_name) { errEl.textContent = 'Informe o nome de exibição'; return; }
+  if (isRegistering && !display_name) { errEl.textContent = t('auth_fill_display'); return; }
   try {
     const endpoint = isRegistering ? '/api/auth/register' : '/api/auth/login';
     const body = isRegistering ? { username, password, display_name } : { username, password };
@@ -469,7 +606,7 @@ async function doAuth() {
     localStorage.setItem('i9c_token', token);
     localStorage.setItem('i9c_user', JSON.stringify(currentUser));
     startApp();
-  } catch (e) { errEl.textContent = 'Erro de conexão'; }
+  } catch (e) { errEl.textContent = t('auth_error'); }
 }
 
 function logout() {
@@ -535,7 +672,7 @@ function connectSocket() {
 
   socket.on('typing:update', (data) => {
     if (data.typing) {
-      document.getElementById('typing-indicator').textContent = `${data.display_name} está digitando...`;
+      document.getElementById('typing-indicator').textContent = `${data.display_name} ${t('is_typing')}`;
     } else {
       document.getElementById('typing-indicator').textContent = '';
     }
@@ -552,7 +689,7 @@ function connectSocket() {
 
   socket.on('chat:cleared', (data) => {
     if (activeView?.type === 'channel' && data.channelId === activeView.id) {
-      document.getElementById('messages-container').innerHTML = '<div class="empty-state"><div class="icon">🗂️</div><p>Chat limpo — mensagens movidas para #chat-history</p></div>';
+      document.getElementById('messages-container').innerHTML = `<div class="empty-state"><div class="icon">🗂️</div><p>${t('chat_cleaned')}</p></div>`;
       loadChannels();
     }
   });
@@ -560,7 +697,7 @@ function connectSocket() {
   // WebRTC events
   socket.on('call:started', (data) => {
     if (activeView?.type === 'channel' && data.channelId === activeView.id) {
-      appendSystemMessage(`📹 ${data.startedBy} iniciou uma chamada de vídeo`);
+      appendSystemMessage(`📹 ${data.startedBy} ${t('call_started')}`);
     }
   });
 
@@ -576,7 +713,7 @@ function connectSocket() {
   });
 
   socket.on('call:peer-joined', async (data) => {
-    appendSystemMessage(`📹 ${data.display_name} entrou na chamada`);
+    appendSystemMessage(`📹 ${data.display_name} ${t('call_joined')}`);
   });
 
   socket.on('call:signal', async (data) => {
@@ -625,12 +762,12 @@ function connectSocket() {
       if (cell) cell.remove();
       updateVideoGrid();
     }
-    appendSystemMessage(`📹 ${data.display_name || 'Usuário'} saiu da chamada`);
+    appendSystemMessage(`📹 ${data.display_name || t('participant')} ${t('call_left')}`);
   });
 
   socket.on('call:ended', () => {
     endCall();
-    appendSystemMessage('📹 Chamada encerrada');
+    appendSystemMessage(`📹 ${t('call_ended')}`);
   });
 }
 
@@ -691,7 +828,7 @@ function renderOnlineList() {
       </div>
       <span>${u.display_name}</span>
     </div>`
-  ).join('') || '<div style="padding:8px 12px;font-size:11px;color:var(--text3)">Ninguém online</div>';
+  ).join('') || `<div style="padding:8px 12px;font-size:11px;color:var(--text3)">${t('nobody_online')}</div>`;
 }
 
 // ═══ CHANNEL / DM OPEN ═══
@@ -700,7 +837,7 @@ async function openChannel(ch) {
   document.getElementById('chat-icon').textContent = '#';
   document.getElementById('chat-name').textContent = ch.name;
   document.getElementById('chat-desc').textContent = ch.description || '';
-  document.getElementById('msg-input').placeholder = 'Digite uma mensagem...';
+  document.getElementById('msg-input').placeholder = t('msg_placeholder');
   renderChannels();
   renderDMs();
   socket.emit('channel:join', ch.id);
@@ -714,7 +851,7 @@ async function openDM(dm) {
   activeView = { type: 'dm', id: dm.id, name: dm.other_name };
   document.getElementById('chat-icon').textContent = '✉';
   document.getElementById('chat-name').textContent = dm.other_name;
-  document.getElementById('chat-desc').textContent = 'Mensagem direta';
+  document.getElementById('chat-desc').textContent = t('dm_label');
   document.getElementById('bot-hint').style.display = 'none';
   renderChannels();
   renderDMs();
@@ -726,7 +863,7 @@ async function openDM(dm) {
 function renderMessages(msgs) {
   const container = document.getElementById('messages-container');
   if (!msgs.length) {
-    container.innerHTML = '<div class="empty-state"><div class="icon">💬</div><p>Nenhuma mensagem ainda. Comece a conversa!</p></div>';
+    container.innerHTML = `<div class="empty-state"><div class="icon">💬</div><p>${t('no_messages')}</p></div>`;
     return;
   }
   container.innerHTML = msgs.map(m => messageHTML(m)).join('');
@@ -735,7 +872,7 @@ function renderMessages(msgs) {
 function messageHTML(m) {
   const isBot = m.type === 'bot' || m.type === 'system';
   const isSuggestion = m.type === 'suggestion';
-  const time = new Date(m.created_at).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+  const time = new Date(m.created_at).toLocaleString(getLocale(), { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
 
   // Suggestion card (collapsible)
   if (isSuggestion) {
@@ -743,7 +880,7 @@ function messageHTML(m) {
       <div class="msg-suggestion" onclick="this.classList.toggle('expanded')">
         <div class="suggestion-header">
           <span class="suggestion-icon">🤖</span>
-          <span class="suggestion-label">i9 Bot detectou um tópico Salesforce</span>
+          <span class="suggestion-label">${t('bot_detected')}</span>
           <span class="suggestion-toggle">▶</span>
         </div>
         <div class="suggestion-body">
@@ -757,7 +894,7 @@ function messageHTML(m) {
   const avatarHTML = isBot
     ? '<div class="msg-avatar bot-avatar">🤖</div>'
     : `<div class="msg-avatar" style="background:${m.avatar_color || '#555'}">${initials(m.display_name || '?')}</div>`;
-  const authorName = isBot ? 'i9 Bot' : (m.display_name || 'Sistema');
+  const authorName = isBot ? 'i9 Bot' : (m.display_name || t('system_label'));
   return `<div class="message">
     ${avatarHTML}
     <div class="msg-body">
@@ -870,7 +1007,7 @@ function showCreateDM() {
       <div class="user-avatar" style="background:${u.avatar_color||'#555'}">${initials(u.display_name)}<div class="status-dot ${u.status}"></div></div>
       <span>${u.display_name}</span>
     </div>`
-  ).join('') || '<p style="padding:10px;color:var(--text3);font-size:12px">Nenhum outro usuário cadastrado</p>';
+  ).join('') || `<p style="padding:10px;color:var(--text3);font-size:12px">${t('no_other_users')}</p>`;
   document.getElementById('modal-dm').classList.add('active');
 }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
@@ -900,7 +1037,7 @@ function toggleRightPanel(view) {
   const isOpen = app.classList.contains('panel-open');
   if (isOpen) { closeRightPanel(); return; }
   app.classList.add('panel-open');
-  document.getElementById('panel-title').textContent = view === 'notifications' ? 'Notificações' : 'Membros';
+  document.getElementById('panel-title').textContent = view === 'notifications' ? t('notifications') : t('members');
   if (view === 'notifications') loadNotifications();
   else renderMembersPanel();
 }
@@ -914,9 +1051,9 @@ function renderMembersPanel() {
   const online = users.filter(u => u.status === 'online');
   const offline = users.filter(u => u.status !== 'online');
   el.innerHTML = `
-    <div style="font-size:11px;font-weight:600;color:var(--text3);margin-bottom:8px">ONLINE — ${online.length}</div>
+    <div style="font-size:11px;font-weight:600;color:var(--text3);margin-bottom:8px">${t('online_label')} — ${online.length}</div>
     ${online.map(u => `<div class="user-item"><div class="user-avatar" style="background:${u.avatar_color||'#555'}">${initials(u.display_name)}<div class="status-dot online"></div></div><span>${u.display_name}</span></div>`).join('')}
-    <div style="font-size:11px;font-weight:600;color:var(--text3);margin:12px 0 8px">OFFLINE — ${offline.length}</div>
+    <div style="font-size:11px;font-weight:600;color:var(--text3);margin:12px 0 8px">${t('offline_label')} — ${offline.length}</div>
     ${offline.map(u => `<div class="user-item"><div class="user-avatar" style="background:${u.avatar_color||'#555'}">${initials(u.display_name)}<div class="status-dot offline"></div></div><span style="color:var(--text3)">${u.display_name}</span></div>`).join('')}
   `;
 }
@@ -925,12 +1062,12 @@ async function loadNotifications() {
   const notifs = await apiFetch('/api/notifications');
   const el = document.getElementById('panel-content');
   if (!notifs.length) {
-    el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Sem notificações</div>';
+    el.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">${t('no_notifications')}</div>`;
     return;
   }
-  el.innerHTML = `<button class="login-toggle" onclick="markAllRead()" style="margin-bottom:10px;font-size:11px">Marcar todas como lidas</button>` +
+  el.innerHTML = `<button class="login-toggle" onclick="markAllRead()" style="margin-bottom:10px;font-size:11px">${t('mark_all_read')}</button>` +
     notifs.map(n => {
-      const time = new Date(n.created_at).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+      const time = new Date(n.created_at).toLocaleString(getLocale(), { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
       return `<div class="notif-item ${n.read?'':'unread'}">
         <div class="notif-title">${n.title || n.type}</div>
         <div class="notif-content">${n.content || ''}</div>
@@ -984,7 +1121,7 @@ async function toggleCall() {
     }
   } catch (err) {
     console.error('Media error:', err);
-    appendSystemMessage('⚠ Permissão de câmera/microfone negada. Verifique as permissões do browser.');
+    appendSystemMessage(t('perm_camera'));
   }
 }
 
@@ -1107,7 +1244,7 @@ function toggleTranscription() {
 function startTranscription() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
-    appendSystemMessage('⚠ Transcrição não suportada neste browser. Use Chrome ou Edge.');
+    appendSystemMessage(t('transcription_unsupported'));
     return;
   }
   recognition = new SpeechRecognition();
@@ -1136,7 +1273,7 @@ function startTranscription() {
     if (event.error === 'no-speech') return; // Ignore silence
     console.error('[Transcription] Error:', event.error);
     if (event.error === 'not-allowed') {
-      appendSystemMessage('⚠ Permissão de microfone negada para transcrição.');
+      appendSystemMessage(t('perm_mic_denied'));
       stopTranscription();
     }
   };
@@ -1153,10 +1290,10 @@ function startTranscription() {
     isTranscribing = true;
     const btn = document.getElementById('btn-transcribe');
     btn.style.background = '#4a9eff';
-    btn.title = 'Transcrição ativa — clique para desativar';
-    appendSystemMessage('💬 Transcrição ativada — sua fala será transcrita no chat');
+    btn.title = t('transcription_active_title');
+    appendSystemMessage(t('transcription_activated'));
   } catch (err) {
-    appendSystemMessage('⚠ Erro ao iniciar transcrição: ' + err.message);
+    appendSystemMessage(t('error_transcription') + ': ' + err.message);
   }
 }
 
@@ -1169,7 +1306,7 @@ function stopTranscription() {
   const btn = document.getElementById('btn-transcribe');
   if (btn) {
     btn.style.background = 'var(--bg4)';
-    btn.title = 'Transcrever áudio para texto';
+    btn.title = t('transcribe_audio');
   }
 }
 
@@ -1191,12 +1328,12 @@ function updateCallUI() {
     btn.classList.add('active-call');
     btn.style.background = '#e74c3c';
     btn.style.borderColor = '#c0392b';
-    btn.innerHTML = '📹 Na chamada';
+    btn.innerHTML = `📹 ${t('in_call')}`;
   } else {
     btn.classList.remove('active-call');
     btn.style.background = '#2ecc71';
     btn.style.borderColor = '#27ae60';
-    btn.innerHTML = '📹 Chamada';
+    btn.innerHTML = `📹 ${t('call_btn')}`;
   }
 }
 
@@ -1212,12 +1349,12 @@ let captureRecognition = null;
 function startAudioCapture() {
   if (isCapturing) { stopAudioCapture(); return; }
   if (!activeView || activeView.type !== 'channel') {
-    appendSystemMessage('⚠ Selecione um canal primeiro');
+    appendSystemMessage(t('select_channel_first'));
     return;
   }
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
-    appendSystemMessage('⚠ Transcrição não suportada neste browser. Use Chrome ou Edge.');
+    appendSystemMessage(t('transcription_unsupported'));
     return;
   }
   captureRecognition = new SpeechRecognition();
@@ -1238,7 +1375,7 @@ function startAudioCapture() {
 
   captureRecognition.onerror = (event) => {
     if (event.error === 'no-speech' || event.error === 'aborted') return;
-    appendSystemMessage('⚠ Erro transcrição: ' + event.error);
+    appendSystemMessage(t('transcription_error') + event.error);
   };
 
   captureRecognition.onend = () => {
@@ -1255,7 +1392,7 @@ function startAudioCapture() {
     btn.style.color = '#fff';
     btn.style.borderColor = 'var(--red)';
     btn.textContent = '⏹';
-    appendSystemMessage('🎤 Transcrição ativa — falando é transcrito no chat em tempo real');
+    appendSystemMessage(t('capture_active'));
   } catch (err) {
     appendSystemMessage('⚠ Erro: ' + err.message);
   }
@@ -1274,7 +1411,7 @@ function stopAudioCapture() {
     btn.style.borderColor = 'var(--border)';
     btn.textContent = '🔊';
   }
-  appendSystemMessage('🎤 Transcrição encerrada');
+  appendSystemMessage(t('capture_ended'));
 }
 
 // ═══ PASTE TRANSCRIPT ═══
@@ -1286,10 +1423,10 @@ function showPasteTranscript() {
   div.id = 'transcript-area';
   div.style.cssText = 'padding:8px 20px;background:var(--bg2);border-top:1px solid var(--border)';
   div.innerHTML = `
-    <textarea id="transcript-text" placeholder="Cole aqui o transcript da reunião do Teams..." style="width:100%;height:80px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px;font-size:12px;resize:vertical;font-family:inherit"></textarea>
+    <textarea id="transcript-text" placeholder="${t('paste_area_placeholder')}" style="width:100%;height:80px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px;font-size:12px;resize:vertical;font-family:inherit"></textarea>
     <div style="display:flex;gap:6px;margin-top:6px">
-      <button onclick="sendTranscript()" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600">Enviar para Agent</button>
-      <button onclick="document.getElementById('transcript-area').remove()" style="padding:6px 14px;background:var(--bg4);color:var(--text2);border:none;border-radius:6px;font-size:11px;cursor:pointer">Cancelar</button>
+      <button onclick="sendTranscript()" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600">${t('send_to_agent')}</button>
+      <button onclick="document.getElementById('transcript-area').remove()" style="padding:6px 14px;background:var(--bg4);color:var(--text2);border:none;border-radius:6px;font-size:11px;cursor:pointer">${t('cancel_btn')}</button>
     </div>`;
   document.querySelector('.chat-input-area').before(div);
 }
@@ -1298,23 +1435,23 @@ async function sendTranscript() {
   const text = document.getElementById('transcript-text')?.value?.trim();
   if (!text || !activeView) return;
   // Send as user message
-  socket.emit('message:send', { channel_id: activeView.id, content: '📋 Transcript de reunião:\n' + text });
+  socket.emit('message:send', { channel_id: activeView.id, content: t('meeting_transcript') + '\n' + text });
   document.getElementById('transcript-area').remove();
 }
 
 // ═══ CLEAR CHAT ═══
 async function clearChat() {
   if (!activeView || activeView.type !== 'channel') return;
-  if (!confirm(`Limpar todas as mensagens de #${activeView.name}?\n\nAs mensagens serão movidas para #chat-history.`)) return;
+  if (!confirm(`${t('clear_confirm')} #${activeView.name}?\n\n${t('messages_moved')}.`)) return;
   try {
     const result = await apiFetch(`/api/channels/${activeView.id}/clear`, { method: 'POST' });
     if (result.ok) {
-      document.getElementById('messages-container').innerHTML = '<div class="empty-state"><div class="icon">✅</div><p>' + result.moved + ' mensagens movidas para #chat-history</p></div>';
+      document.getElementById('messages-container').innerHTML = `<div class="empty-state"><div class="icon">✅</div><p>${result.moved} ${t('messages_moved')}</p></div>`;
       // Reload channels to show chat-history if new
       loadChannels();
     }
   } catch (err) {
-    appendSystemMessage('⚠ Erro ao limpar chat: ' + err.message);
+    appendSystemMessage(`⚠ ${t('error_label')}: ` + err.message);
   }
 }
 
@@ -1413,6 +1550,7 @@ async function checkSSO() {
 (async () => {
   if (await checkSSO()) return;
   if (token && currentUser) {
+  setTimeout(applyI18n, 100);
     startApp();
   } else {
     document.getElementById('login-screen').style.display = 'flex';
@@ -1422,6 +1560,12 @@ async function checkSSO() {
 // Periodic presence refresh
 setInterval(() => { if (token) loadUsers(); }, 30000);
 setInterval(() => { if (token) updateNotifBadge(); }, 15000);
+// Apply i18n on load
+document.addEventListener('DOMContentLoaded', () => {
+  applyI18n();
+  const langBtn = document.getElementById('lang-toggle');
+  if (langBtn) langBtn.textContent = currentLang === 'en' ? 'PT' : 'EN';
+});
 </script>
 </body>
 </html>
