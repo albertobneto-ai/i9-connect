@@ -1250,22 +1250,26 @@ function startTranscription() {
   }
   recognition = new SpeechRecognition();
   recognition.continuous = true;
-  recognition.interimResults = false;
-  recognition.lang = 'pt-BR';
+  recognition.interimResults = true;
+  recognition.lang = currentLang === 'en' ? 'en-US' : 'pt-BR';
   recognition.maxAlternatives = 1;
+
+  let pendingTranscript = '';
 
   recognition.onresult = (event) => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript.trim();
       if (event.results[i].isFinal) {
-        const transcript = event.results[i][0].transcript.trim();
         if (transcript.length > 1 && activeView?.type === 'channel') {
-          // Send transcription as a message with 🎤 prefix
           socket.emit('message:send', {
             channel_id: activeView.id,
             content: '🎤 ' + transcript,
             type: 'text'
           });
         }
+        pendingTranscript = '';
+      } else {
+        pendingTranscript = transcript;
       }
     }
   };
@@ -1280,9 +1284,23 @@ function startTranscription() {
   };
 
   recognition.onend = () => {
-    // Auto-restart if still transcribing (recognition stops after silence)
-    if (isTranscribing && inCall) {
-      try { recognition.start(); } catch {}
+    // Auto-restart — browser cuts recognition after silence/timeout
+    if (isTranscribing) {
+      // Send any pending interim transcript before restart
+      if (pendingTranscript.length > 1 && activeView?.type === 'channel') {
+        socket.emit('message:send', {
+          channel_id: activeView.id,
+          content: '🎤 ' + pendingTranscript,
+          type: 'text'
+        });
+        pendingTranscript = '';
+      }
+      // Restart with minimal gap
+      setTimeout(() => {
+        if (isTranscribing && recognition) {
+          try { recognition.start(); } catch (e) { console.log('[Transcription] Restart failed:', e.message); }
+        }
+      }, 100);
     }
   };
 
@@ -1360,16 +1378,21 @@ function startAudioCapture() {
   }
   captureRecognition = new SpeechRecognition();
   captureRecognition.continuous = true;
-  captureRecognition.interimResults = false;
-  captureRecognition.lang = 'pt-BR';
+  captureRecognition.interimResults = true;
+  captureRecognition.lang = currentLang === 'en' ? 'en-US' : 'pt-BR';
+
+  let capturePending = '';
 
   captureRecognition.onresult = (event) => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
+      const text = event.results[i][0].transcript.trim();
       if (event.results[i].isFinal) {
-        const text = event.results[i][0].transcript.trim();
         if (text.length > 1 && activeView?.type === 'channel') {
           socket.emit('message:send', { channel_id: activeView.id, content: '🎤 ' + text, type: 'text' });
         }
+        capturePending = '';
+      } else {
+        capturePending = text;
       }
     }
   };
@@ -1381,7 +1404,16 @@ function startAudioCapture() {
 
   captureRecognition.onend = () => {
     if (isCapturing) {
-      try { captureRecognition.start(); } catch {}
+      // Flush pending interim before restart
+      if (capturePending.length > 1 && activeView?.type === 'channel') {
+        socket.emit('message:send', { channel_id: activeView.id, content: '🎤 ' + capturePending, type: 'text' });
+        capturePending = '';
+      }
+      setTimeout(() => {
+        if (isCapturing && captureRecognition) {
+          try { captureRecognition.start(); } catch (e) { console.log('[Capture] Restart failed:', e.message); }
+        }
+      }, 100);
     }
   };
 
