@@ -272,6 +272,23 @@ app.post('/api/admin/users', async (req, res) => {
   }
 });
 
+
+// Admin: reset user password
+app.post('/api/admin/reset-password', async (req, res) => {
+  try {
+    const { username, new_password, admin_key } = req.body;
+    if (admin_key !== SSO_SECRET) return res.status(401).json({ error: 'Invalid admin key' });
+    if (!username || !new_password) return res.status(400).json({ error: 'Missing fields' });
+    const hash = await bcrypt.hash(new_password, 10);
+    const { rowCount } = await pool.query(
+      'UPDATE connect_users SET password_hash = $1 WHERE username = $2',
+      [hash, username.toLowerCase().trim()]
+    );
+    if (rowCount === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ ok: true, message: 'Password reset successfully' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ═══ CHANNELS ═══
 app.get('/api/channels', authMiddleware, async (req, res) => {
   try {
